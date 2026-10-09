@@ -1,0 +1,19 @@
+# Virtuelle Umgebung
+.venv/
+venv/
+
+# Python-Zwischendateien
+__pycache__/
+*.pyc
+
+# pytest
+.pytest_cache/
+
+# Editor / Betriebssystem
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Datenbank (spaeter, enthaelt echte Spieldaten)
+*.sqlite
+*.db

@@ -1,0 +1,4 @@
+[tool.pytest.ini_options]
+# Damit "import poker" in den Tests funktioniert, egal von wo pytest startet.
+pythonpath = ["."]
+testpaths = ["tests"]
