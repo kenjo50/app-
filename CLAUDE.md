@@ -20,7 +20,9 @@ und schlaegt sie einen Zufalls-Bot? Messung in bb/100 ueber viele Haende.
   `return` zurueck. Kein `print()`/`input()` im Kern, nur in `cli.py`
   (spaeter FastAPI-Server + Web-App/PWA fuers iPhone).
 - Startbare Dateien nutzen `if __name__ == "__main__":`.
-- Speicher: SQLite (ab Baustein 3).
+- Speicher: SQLite (`poker/profile.py`). Erfasst wird jede Aktion in jeder
+  Strasse mit Betrag (fold/check/call/bet/raise). Blinds stehen in `haende`,
+  nicht als Aktion. Karten werden als JSON-Text gespeichert.
 
 ## Kartendarstellung (verbindlich)
 Karte = Tupel `(rang, farbe)`, `rang` 2..14 (11 Bube, 12 Dame, 13 Koenig, 14 Ass),
@@ -39,7 +41,7 @@ Variante testen.
 ## Fahrplan
 1. Karten, Deck, Handbewertung (erledigt)
 2. Equity per Monte-Carlo, Standard 10000 Durchlaeufe (erledigt; Referenz AA vs KK ca. 82 %)
-3. Spielerprofile & Statistiken (SQLite)
+3. Spielerprofile & Statistiken (SQLite) – Speicher + VPIP/PFR/AF fertig, Live-Eingabe offen
 4. Spiel-Simulation mit Bots (inkl. Zufalls-Bot)
 5. KI: Spielertypen erkennen, Gegenstrategie
 6. Oberflaeche: erst CLI, spaeter Web-App
