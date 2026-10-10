@@ -11,6 +11,7 @@ Tabellen:
                Stack zu Beginn der Hand, wie viel er insgesamt gesetzt und
                wie viel er gewonnen hat)
 - aktionen:    jede einzelne Aktion: Strasse, Art, Betrag, in Reihenfolge
+- blindvorlagen: gespeicherte Blindstrukturen fuer den Turnier-Timer (JSON)
 """
 
 import json
@@ -53,6 +54,10 @@ CREATE TABLE IF NOT EXISTS aktionen (
     strasse     TEXT NOT NULL,
     aktion      TEXT NOT NULL,
     betrag      REAL NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS blindvorlagen (
+    name    TEXT PRIMARY KEY,
+    levels  TEXT NOT NULL
 );
 """
 
