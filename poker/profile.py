@@ -12,6 +12,9 @@ Tabellen:
                wie viel er gewonnen hat)
 - aktionen:    jede einzelne Aktion: Strasse, Art, Betrag, in Reihenfolge
 - blindvorlagen: gespeicherte Blindstrukturen fuer den Turnier-Timer (JSON)
+- abende:      ein Turnier oder Cash Game (Buy-in-Betraege, Auszahlungsstruktur)
+- abend_spieler: wer an einem Abend dabei ist (im Turnier mit Platzierung)
+- buchungen:   Geldbewegungen in Cent: buyin, rebuy, addon, cashout, auszahlung
 """
 
 import json
@@ -58,6 +61,31 @@ CREATE TABLE IF NOT EXISTS aktionen (
 CREATE TABLE IF NOT EXISTS blindvorlagen (
     name    TEXT PRIMARY KEY,
     levels  TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS abende (
+    id          INTEGER PRIMARY KEY,
+    art         TEXT NOT NULL,
+    zeitpunkt   TEXT NOT NULL,
+    name        TEXT NOT NULL DEFAULT '',
+    buyin_cent  INTEGER,
+    rebuy_cent  INTEGER,
+    addon_cent  INTEGER,
+    auszahlung  TEXT,
+    beendet     INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS abend_spieler (
+    abend_id    INTEGER NOT NULL REFERENCES abende(id),
+    spieler_id  INTEGER NOT NULL REFERENCES spieler(id),
+    platz       INTEGER,
+    PRIMARY KEY (abend_id, spieler_id)
+);
+CREATE TABLE IF NOT EXISTS buchungen (
+    id           INTEGER PRIMARY KEY,
+    abend_id     INTEGER NOT NULL REFERENCES abende(id),
+    spieler_id   INTEGER NOT NULL REFERENCES spieler(id),
+    art          TEXT NOT NULL,
+    betrag_cent  INTEGER NOT NULL,
+    zeitpunkt    TEXT NOT NULL
 );
 """
 
