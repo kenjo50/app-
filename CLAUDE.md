@@ -23,6 +23,8 @@ und schlaegt sie einen Zufalls-Bot? Messung in bb/100 ueber viele Haende.
 - Speicher: SQLite (`poker/profile.py`). Erfasst wird jede Aktion in jeder
   Strasse mit Betrag (fold/check/call/bet/raise). Blinds stehen in `haende`,
   nicht als Aktion. Karten werden als JSON-Text gespeichert.
+- Betraege = Gesamteinsatz des Spielers in der Setzrunde ("raise AUF 6").
+  Die App rechnet Call-Betraege selbst aus (`poker/live.py`).
 
 ## Kartendarstellung (verbindlich)
 Karte = Tupel `(rang, farbe)`, `rang` 2..14 (11 Bube, 12 Dame, 13 Koenig, 14 Ass),
@@ -41,7 +43,7 @@ Variante testen.
 ## Fahrplan
 1. Karten, Deck, Handbewertung (erledigt)
 2. Equity per Monte-Carlo, Standard 10000 Durchlaeufe (erledigt; Referenz AA vs KK ca. 82 %)
-3. Spielerprofile & Statistiken (SQLite) – Speicher + VPIP/PFR/AF fertig, Live-Eingabe offen
+3. Spielerprofile & Statistiken (SQLite) + Live-Eingabe (`poker/live.py`) fertig
 4. Spiel-Simulation mit Bots (inkl. Zufalls-Bot)
 5. KI: Spielertypen erkennen, Gegenstrategie
 6. Oberflaeche: erst CLI, spaeter Web-App
@@ -49,3 +51,4 @@ Variante testen.
 ## Befehle
 - Tests: `python -m pytest`
 - Demo: `python cli.py` oder `python cli.py 42` (fester Seed)
+- Live-Modus: `python cli.py live` (Datenbank `heimrunde.db`)
