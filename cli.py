@@ -21,6 +21,7 @@ from poker.live import (
     naechste_strasse,
     pot,
     rotiere,
+    setzrunde_abgeschlossen,
     showdown_gewinner,
     starte_hand,
     verarbeite_aktion,
@@ -31,19 +32,18 @@ from poker.profile import berechne_statistik, oeffne_datenbank
 STANDARD_DATENBANK = "heimrunde.db"
 
 HILFE = """
-Eingaben waehrend einer Hand:
-  anna r 6     raise (oder bet) AUF 6
-  anna c       call (oder check, wenn nichts offen ist)
-  anna x       check
-  anna f       fold
-  flop Ks 9h 4d   naechste Setzrunde mit den neuen Board-Karten
-  turn 2c / river 7s   (ohne Karten fragt die App nach)
-  ende         Hand nach dem River beenden, danach kommt der Showdown
+Eingaben waehrend einer Hand (die App zeigt, wer dran ist):
+  r 6          raise (oder bet) AUF 6
+  c            call (oder check, wenn nichts offen ist)
+  x            check
+  f            fold
+  anna r 6     mit Name geht es auch, die App prueft dann, ob Anna dran ist
   stats        Statistiken aller Spieler
   hilfe        diese Hilfe
   quit         Programm beenden
-Namen duerfen abgekuerzt werden, solange sie eindeutig sind ("an" fuer Anna).
-Karten: Rang (2-9, T/10, J/B, Q/D, K, A) + Farbe (s Pik, h Herz, d Karo, c Kreuz).
+Ist eine Setzrunde vorbei, fragt die App nach den Board-Karten.
+Karten: Rang (2-9, T/10, J/B, Q/D, K, A) + Farbe (s Pik, h Herz, d Karo, c Kreuz),
+z. B. "Ks 9h 4d".
 """
 
 RANG_ZEICHEN = {11: "B", 12: "D", 13: "K", 14: "A"}
@@ -154,7 +154,15 @@ def spiele_live_hand(db, namen, small_blind, big_blind):
 
     while not zustand["beendet"]:
         try:
-            eingabe = input(f"[{zustand['strasse']}] > ").strip()
+            if setzrunde_abgeschlossen(zustand):
+                # Runde vorbei: nach dem River zum Showdown, sonst neue Karten.
+                if zustand["strasse"] == "river":
+                    beende_hand(zustand)
+                    continue
+                strasse = NAECHSTE_STRASSE[zustand["strasse"]]
+                eingabe = input(f"   Karten fuer den {strasse}: ").strip()
+            else:
+                eingabe = input(f"[{zustand['strasse']}] {zustand['am_zug']} > ").strip()
         except EOFError:
             return False
         befehl = eingabe.lower()
@@ -168,20 +176,13 @@ def spiele_live_hand(db, namen, small_blind, big_blind):
                 print(HILFE)
             elif befehl == "stats":
                 zeige_statistik(db, namen)
-            elif befehl.split()[0] in ["flop", "turn", "river"]:
-                strasse = befehl.split()[0]
-                if NAECHSTE_STRASSE.get(zustand["strasse"]) != strasse:
-                    print(f"   Nach {zustand['strasse']} kommt nicht {strasse}.")
-                    continue
-                karten_text = befehl[len(strasse):].strip()
-                if karten_text == "":
-                    karten_text = input(f"   Karten fuer den {strasse}: ")
-                naechste_strasse(db, zustand, lies_karten(karten_text))
+            elif setzrunde_abgeschlossen(zustand):
+                naechste_strasse(db, zustand, lies_karten(eingabe))
                 zeige_stand(zustand)
-            elif befehl == "ende":
-                beende_hand(zustand)
             else:
-                name, grundaktion, betrag = lies_aktion(eingabe, zustand["namen"])
+                name, grundaktion, betrag = lies_aktion(
+                    eingabe, zustand["namen"], zustand["am_zug"]
+                )
                 aktion, gesetzt = verarbeite_aktion(db, zustand, name, grundaktion, betrag)
                 text = f"   {name}: {aktion}"
                 if gesetzt > 0:

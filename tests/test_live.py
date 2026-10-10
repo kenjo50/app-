@@ -42,6 +42,16 @@ def test_lies_aktion():
     assert lies_aktion("anna bet 2,5", NAMEN) == ("Anna", "raise", 2.5)
 
 
+def test_lies_aktion_ohne_namen():
+    assert lies_aktion("r 6", NAMEN, am_zug="Clara") == ("Clara", "raise", 6.0)
+    assert lies_aktion("c", NAMEN, am_zug="Ben") == ("Ben", "call", None)
+    # "b" ist bet, "ben" ist ein Name: beides funktioniert
+    assert lies_aktion("b 4", NAMEN, am_zug="Anna") == ("Anna", "raise", 4.0)
+    assert lies_aktion("b f", NAMEN, am_zug="Anna") == ("Ben", "fold", None)
+    with pytest.raises(ValueError):
+        lies_aktion("c", NAMEN)  # ohne am_zug geht es nicht
+
+
 def test_lies_aktion_fehler():
     for falsch in ["anna", "anna q", "anna r", "anna r viel", "anna c 5", "zoe f"]:
         with pytest.raises(ValueError):
@@ -81,6 +91,8 @@ def test_ganze_hand(db):
     assert pot(z) == 53
 
     naechste_strasse(db, z, TURN)
+    verarbeite_aktion(db, z, "Ben", "check")
+    verarbeite_aktion(db, z, "Clara", "check")
     naechste_strasse(db, z, RIVER)
     verarbeite_aktion(db, z, "Ben", "check")
     verarbeite_aktion(db, z, "Clara", "check")
@@ -95,6 +107,8 @@ def test_ganze_hand(db):
         ("Clara", "flop", "bet", 8),
         ("Ben", "flop", "raise", 20),
         ("Clara", "flop", "call", 20),
+        ("Ben", "turn", "check", 0),
+        ("Clara", "turn", "check", 0),
         ("Ben", "river", "check", 0),
         ("Clara", "river", "check", 0),
     ]
@@ -145,6 +159,73 @@ def test_ende_erst_nach_river(db):
         beende_hand(z)
 
 
+# ---------- Reihenfolge ----------
+
+
+def test_preflop_reihenfolge(db):
+    z = starte_hand(db, NAMEN, 1, 2)
+    assert z["am_zug"] == "Clara"  # links vom Big Blind
+    with pytest.raises(ValueError):
+        verarbeite_aktion(db, z, "Anna", "call")  # Anna ist noch nicht dran
+    verarbeite_aktion(db, z, "Clara", "call")
+    assert z["am_zug"] == "Anna"
+    verarbeite_aktion(db, z, "Anna", "call")
+    assert z["am_zug"] == "Ben"
+
+
+def test_big_blind_option(db):
+    # Alle callen, aber der Big Blind darf noch erhoehen.
+    z = starte_hand(db, NAMEN, 1, 2)
+    verarbeite_aktion(db, z, "Clara", "call")
+    verarbeite_aktion(db, z, "Anna", "call")
+    with pytest.raises(ValueError):
+        naechste_strasse(db, z, FLOP)  # Ben hat noch nicht gehandelt
+    verarbeite_aktion(db, z, "Ben", "raise", 6)
+    # Nach der Erhoehung muessen Clara und Anna nochmal entscheiden.
+    assert z["am_zug"] == "Clara"
+    verarbeite_aktion(db, z, "Clara", "call")
+    verarbeite_aktion(db, z, "Anna", "fold")
+    assert z["am_zug"] is None
+    naechste_strasse(db, z, FLOP)
+
+
+def test_nach_dem_flop_beginnt_der_small_blind(db):
+    z = starte_hand(db, NAMEN, 1, 2)
+    verarbeite_aktion(db, z, "Clara", "call")
+    verarbeite_aktion(db, z, "Anna", "call")
+    verarbeite_aktion(db, z, "Ben", "check")
+    naechste_strasse(db, z, FLOP)
+    assert z["am_zug"] == "Anna"
+
+
+def test_gefoldete_werden_uebersprungen(db):
+    z = starte_hand(db, NAMEN, 1, 2)
+    verarbeite_aktion(db, z, "Clara", "call")
+    verarbeite_aktion(db, z, "Anna", "fold")
+    verarbeite_aktion(db, z, "Ben", "check")
+    naechste_strasse(db, z, FLOP)
+    assert z["am_zug"] == "Ben"
+
+
+def test_heads_up_reihenfolge(db):
+    z = starte_hand(db, ["Anna", "Ben"], 1, 2)
+    assert z["am_zug"] == "Anna"  # preflop: Small Blind (= Button) zuerst
+    verarbeite_aktion(db, z, "Anna", "call")
+    assert z["am_zug"] == "Ben"   # Big Blind hat noch die Option
+    verarbeite_aktion(db, z, "Ben", "check")
+    naechste_strasse(db, z, FLOP)
+    assert z["am_zug"] == "Ben"   # ab dem Flop: Big Blind zuerst
+
+
+def test_runde_vorbei_keine_aktion_mehr(db):
+    z = starte_hand(db, NAMEN, 1, 2)
+    verarbeite_aktion(db, z, "Clara", "call")
+    verarbeite_aktion(db, z, "Anna", "call")
+    verarbeite_aktion(db, z, "Ben", "check")
+    with pytest.raises(ValueError):
+        verarbeite_aktion(db, z, "Clara", "raise", 10)
+
+
 # ---------- Board, Showdown, Abrechnung ----------
 
 
@@ -169,6 +250,7 @@ def test_board_karten_pruefen(db):
     z = starte_hand(db, NAMEN, 1, 2)
     verarbeite_aktion(db, z, "Clara", "call")
     verarbeite_aktion(db, z, "Anna", "call")
+    verarbeite_aktion(db, z, "Ben", "check")
     with pytest.raises(ValueError):
         naechste_strasse(db, z, lies_karten("Ks 9h"))  # nur 2 Karten
     naechste_strasse(db, z, FLOP)

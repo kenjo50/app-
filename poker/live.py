@@ -6,6 +6,14 @@ gesetzt hat. Dadurch reicht beim Callen ein "c" ohne Betrag.
 Betraege sind immer der Gesamteinsatz des Spielers in dieser Setzrunde
 ("raise auf 6", nicht "um 6"). So steht es auch in der Datenbank.
 
+Die App weiss auch, wer an der Reihe ist:
+- preflop beginnt der Spieler links vom Big Blind, der Big Blind spricht zuletzt
+- ab dem Flop beginnt der erste aktive Spieler ab dem Small Blind
+- Sonderfall zu zweit (heads-up): preflop beginnt der Small Blind (= Button),
+  ab dem Flop der Big Blind
+Eine Setzrunde ist vorbei, wenn jeder aktive Spieler nach dem letzten
+bet/raise gehandelt hat.
+
 Der Zustand einer Hand ist ein Dictionary (siehe starte_hand).
 Ablauf: starte_hand -> verarbeite_aktion / naechste_strasse -> beende_hand
 -> showdown_gewinner (falls noetig) -> abrechnen.
@@ -51,6 +59,9 @@ def starte_hand(verbindung, namen, small_blind, big_blind):
     einsaetze[namen[1]] = big_blind
     investiert[namen[0]] = small_blind
     investiert[namen[1]] = big_blind
+    # Preflop beginnt der Spieler nach dem Big Blind (Platz 2).
+    # Zu zweit ist das wieder Platz 0, also der Small Blind.
+    erster = namen[2 % len(namen)]
     return {
         "hand_id": hand_id,
         "namen": list(namen),
@@ -60,6 +71,8 @@ def starte_hand(verbindung, namen, small_blind, big_blind):
         "einsaetze": einsaetze,      # Einsatz pro Spieler in dieser Setzrunde
         "investiert": investiert,    # Einsatz pro Spieler in der ganzen Hand
         "hoechster": big_blind,      # hoechster Einsatz in dieser Setzrunde
+        "noch_dran": list(namen),    # wer in dieser Setzrunde noch handeln muss
+        "am_zug": erster,            # wer jetzt handeln muss (None = Runde vorbei)
         "beendet": False,            # Setzen vorbei
         "abgerechnet": False,        # Pot verteilt und gespeichert
     }
@@ -73,6 +86,19 @@ def pot(zustand):
 def zu_callen(zustand, name):
     """Wie viel muss dieser Spieler noch nachlegen, um mitzugehen?"""
     return zustand["hoechster"] - zustand["einsaetze"][name]
+
+
+def naechster_am_zug(zustand, ab_platz):
+    """Sucht ab Sitzplatz `ab_platz` (im Kreis) den ersten, der noch handeln muss.
+
+    Gibt den Namen zurueck oder None, wenn keiner mehr handeln muss.
+    """
+    namen = zustand["namen"]
+    for schritt in range(len(namen)):
+        name = namen[(ab_platz + schritt) % len(namen)]
+        if name in zustand["noch_dran"]:
+            return name
+    return None
 
 
 def finde_spieler(eingabe, namen):
@@ -95,30 +121,39 @@ def finde_spieler(eingabe, namen):
     raise ValueError(f"'{eingabe}' ist nicht eindeutig: {', '.join(treffer)}")
 
 
-def lies_aktion(text, namen):
+def lies_aktion(text, namen, am_zug=None):
     """Zerlegt eine Eingabe wie "anna r 6" in (name, grundaktion, betrag).
 
+    Der Name darf fehlen ("r 6", "c"), dann ist der Spieler `am_zug` gemeint.
     grundaktion ist "fold", "check", "call" oder "raise".
     betrag ist nur bei "raise" gesetzt, sonst None.
     """
     teile = text.split()
-    if len(teile) < 2:
-        raise ValueError("Format: <name> <f|x|c|r> [betrag]")
-    name = finde_spieler(teile[0], namen)
-    kuerzel = teile[1].lower()
+    if len(teile) == 0:
+        raise ValueError("Format: [name] <f|x|c|r> [betrag]")
+    # Steht an zweiter Stelle eine Aktion, ist das erste Wort der Name.
+    # Sonst ist das erste Wort schon die Aktion und der Name fehlt.
+    if len(teile) >= 2 and teile[1].lower() in KUERZEL:
+        name = finde_spieler(teile[0], namen)
+        teile = teile[1:]
+    elif teile[0].lower() in KUERZEL and am_zug is not None:
+        name = am_zug
+    else:
+        raise ValueError("Format: [name] <f|x|c|r> [betrag]")
+    kuerzel = teile[0].lower()
     if kuerzel not in KUERZEL:
-        raise ValueError(f"Unbekannte Aktion '{teile[1]}' (f, x, c, r)")
+        raise ValueError(f"Unbekannte Aktion '{teile[0]}' (f, x, c, r)")
     grundaktion = KUERZEL[kuerzel]
 
     betrag = None
     if grundaktion == "raise":
-        if len(teile) != 3:
-            raise ValueError("Bei raise/bet bitte den Betrag angeben, z. B. 'anna r 6'")
+        if len(teile) != 2:
+            raise ValueError("Bei raise/bet bitte den Betrag angeben, z. B. 'r 6'")
         try:
-            betrag = float(teile[2].replace(",", "."))
+            betrag = float(teile[1].replace(",", "."))
         except ValueError:
-            raise ValueError(f"'{teile[2]}' ist keine Zahl")
-    elif len(teile) > 2:
+            raise ValueError(f"'{teile[1]}' ist keine Zahl")
+    elif len(teile) > 1:
         raise ValueError(f"Bei {grundaktion} gibt man keinen Betrag an")
     return name, grundaktion, betrag
 
@@ -134,6 +169,10 @@ def verarbeite_aktion(verbindung, zustand, name, grundaktion, betrag=None):
         raise ValueError("Die Hand ist schon vorbei")
     if name not in zustand["aktiv"]:
         raise ValueError(f"{name} ist nicht mehr in der Hand")
+    if zustand["am_zug"] is None:
+        raise ValueError("Die Setzrunde ist vorbei, bitte die naechsten Karten eingeben")
+    if name != zustand["am_zug"]:
+        raise ValueError(f"{zustand['am_zug']} ist dran, nicht {name}")
 
     offen = zu_callen(zustand, name)
 
@@ -172,23 +211,34 @@ def verarbeite_aktion(verbindung, zustand, name, grundaktion, betrag=None):
 
     if aktion == "fold":
         zustand["aktiv"].remove(name)
-        if len(zustand["aktiv"]) == 1:
-            zustand["beendet"] = True
     elif neuer_einsatz is not None:
         # Nur die Differenz kommt neu in den Pot dazu.
         zustand["investiert"][name] += neuer_einsatz - zustand["einsaetze"][name]
         zustand["einsaetze"][name] = neuer_einsatz
         zustand["hoechster"] = max(zustand["hoechster"], neuer_einsatz)
 
+    # Wer muss jetzt noch handeln?
+    if aktion in ["bet", "raise"]:
+        # Nach einer Erhoehung muessen alle anderen noch einmal entscheiden.
+        zustand["noch_dran"] = []
+        for anderer in zustand["aktiv"]:
+            if anderer != name:
+                zustand["noch_dran"].append(anderer)
+    else:
+        zustand["noch_dran"].remove(name)
+
+    if len(zustand["aktiv"]) == 1:
+        zustand["beendet"] = True
+        zustand["noch_dran"] = []
+    platz = zustand["namen"].index(name)
+    zustand["am_zug"] = naechster_am_zug(zustand, platz + 1)
+
     return aktion, gespeicherter_betrag
 
 
 def setzrunde_abgeschlossen(zustand):
-    """True, wenn alle aktiven Spieler gleich viel gesetzt haben."""
-    for name in zustand["aktiv"]:
-        if zu_callen(zustand, name) > 0:
-            return False
-    return True
+    """True, wenn in dieser Setzrunde keiner mehr handeln muss."""
+    return len(zustand["noch_dran"]) == 0
 
 
 def naechste_strasse(verbindung, zustand, neue_karten):
@@ -201,11 +251,7 @@ def naechste_strasse(verbindung, zustand, neue_karten):
     if zustand["strasse"] not in NAECHSTE_STRASSE:
         raise ValueError("Nach dem River kommt keine Setzrunde mehr, gib 'ende' ein")
     if not setzrunde_abgeschlossen(zustand):
-        offen = []
-        for name in zustand["aktiv"]:
-            if zu_callen(zustand, name) > 0:
-                offen.append(name)
-        raise ValueError(f"Es muessen noch callen oder folden: {', '.join(offen)}")
+        raise ValueError(f"Die Setzrunde laeuft noch, {zustand['am_zug']} ist dran")
 
     neue_strasse = NAECHSTE_STRASSE[zustand["strasse"]]
     anzahl = NEUE_BOARD_KARTEN[neue_strasse]
@@ -221,6 +267,13 @@ def naechste_strasse(verbindung, zustand, neue_karten):
         zustand["einsaetze"][name] = 0
     zustand["hoechster"] = 0
     zustand["strasse"] = neue_strasse
+    # Ab dem Flop: erster aktiver Spieler ab dem Small Blind (Platz 0),
+    # zu zweit beginnt der Big Blind (Platz 1).
+    zustand["noch_dran"] = list(zustand["aktiv"])
+    if len(zustand["namen"]) == 2:
+        zustand["am_zug"] = naechster_am_zug(zustand, 1)
+    else:
+        zustand["am_zug"] = naechster_am_zug(zustand, 0)
     return neue_strasse
 
 
@@ -232,7 +285,7 @@ def beende_hand(zustand):
         raise ValueError("Die Hand kann erst nach dem River beendet werden "
                          "(oder wenn alle bis auf einen gefoldet haben)")
     if not setzrunde_abgeschlossen(zustand):
-        raise ValueError("Auf dem River muss noch jemand callen oder folden")
+        raise ValueError(f"Auf dem River ist noch {zustand['am_zug']} dran")
     zustand["beendet"] = True
 
 
