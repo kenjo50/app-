@@ -16,10 +16,15 @@ from poker.live import (
     NAECHSTE_STRASSE,
     abrechnen,
     beende_hand,
+    berechne_pots,
     finde_spieler,
+    gewinner_ohne_showdown,
+    ist_allin,
     lies_aktion,
+    lies_zahl,
     naechste_strasse,
     pot,
+    rebuy,
     rotiere,
     setzrunde_abgeschlossen,
     showdown_gewinner,
@@ -29,6 +34,9 @@ from poker.live import (
 )
 from poker.profile import berechne_statistik, oeffne_datenbank
 
+RANG_ZEICHEN = {11: "B", 12: "D", 13: "K", 14: "A"}
+FARB_ZEICHEN = {"Karo": "♦", "Herz": "♥", "Pik": "♠", "Kreuz": "♣"}
+
 STANDARD_DATENBANK = "heimrunde.db"
 
 HILFE = """
@@ -37,7 +45,9 @@ Eingaben waehrend einer Hand (die App zeigt, wer dran ist):
   c            call (oder check, wenn nichts offen ist)
   x            check
   f            fold
+  a            all-in
   anna r 6     mit Name geht es auch, die App prueft dann, ob Anna dran ist
+  rebuy anna 100   Anna kauft 100 Chips nach (gilt ab der naechsten Hand)
   stats        Statistiken aller Spieler
   hilfe        diese Hilfe
   quit         Programm beenden
@@ -45,9 +55,6 @@ Ist eine Setzrunde vorbei, fragt die App nach den Board-Karten.
 Karten: Rang (2-9, T/10, J/B, Q/D, K, A) + Farbe (s Pik, h Herz, d Karo, c Kreuz),
 z. B. "Ks 9h 4d".
 """
-
-RANG_ZEICHEN = {11: "B", 12: "D", 13: "K", 14: "A"}
-FARB_ZEICHEN = {"Karo": "♦", "Herz": "♥", "Pik": "♠", "Kreuz": "♣"}
 
 
 def karte_als_text(karte):
@@ -130,13 +137,20 @@ def zeige_statistik(db, namen):
               f"{prozent_als_text(st['pfr']):>6} {af_text:>6} {bb_text:>8}")
 
 
+def stacks_als_text(namen, stacks):
+    teile = []
+    for name in namen:
+        teile.append(f"{name} {zahl_als_text(stacks[name])}")
+    return ", ".join(teile)
+
+
 def zeige_stand(zustand):
     """Zeigt Board, Pot und wer wie viel nachlegen muss."""
     if zustand["board"]:
         print("   Board:", karten_als_text(zustand["board"]))
     offen = []
     for name in zustand["aktiv"]:
-        betrag = zu_callen(zustand, name)
+        betrag = min(zu_callen(zustand, name), zustand["stacks"][name])
         if betrag > 0:
             offen.append(f"{name} {zahl_als_text(betrag)}")
     zeile = f"   Pot {zahl_als_text(pot(zustand))}"
@@ -145,11 +159,16 @@ def zeige_stand(zustand):
     print(zeile)
 
 
-def spiele_live_hand(db, namen, small_blind, big_blind):
-    """Schreibt eine Hand mit. Gibt False zurueck, wenn der Nutzer beenden will."""
-    zustand = starte_hand(db, namen, small_blind, big_blind)
+def spiele_live_hand(db, namen, small_blind, big_blind, stacks):
+    """Schreibt eine Hand mit.
+
+    Gibt (weiter, neue_stacks) zurueck. weiter ist False, wenn der Nutzer beenden will.
+    """
+    zustand = starte_hand(db, namen, small_blind, big_blind, stacks)
+    nachkaeufe = []  # Rebuys waehrend der Hand, gelten ab der naechsten Hand
     print()
     print(f"=== Hand {zustand['hand_id']} === SB: {namen[0]}, BB: {namen[1]}")
+    print("   Stacks:", stacks_als_text(namen, stacks))
     zeige_stand(zustand)
 
     while not zustand["beendet"]:
@@ -164,18 +183,25 @@ def spiele_live_hand(db, namen, small_blind, big_blind):
             else:
                 eingabe = input(f"[{zustand['strasse']}] {zustand['am_zug']} > ").strip()
         except EOFError:
-            return False
+            return False, stacks
         befehl = eingabe.lower()
 
         try:
             if befehl == "":
                 continue
             elif befehl in ["quit", "q", "exit"]:
-                return False
+                return False, stacks
             elif befehl == "hilfe":
                 print(HILFE)
             elif befehl == "stats":
                 zeige_statistik(db, namen)
+            elif befehl.startswith("rebuy"):
+                teile = eingabe.split()
+                if len(teile) != 3:
+                    raise ValueError("Format: rebuy <name> <betrag>")
+                name = finde_spieler(teile[1], namen)
+                nachkaeufe.append((name, lies_zahl(teile[2])))
+                print(f"   Rebuy fuer {name} gilt ab der naechsten Hand.")
             elif setzrunde_abgeschlossen(zustand):
                 naechste_strasse(db, zustand, lies_karten(eingabe))
                 zeige_stand(zustand)
@@ -187,6 +213,8 @@ def spiele_live_hand(db, namen, small_blind, big_blind):
                 text = f"   {name}: {aktion}"
                 if gesetzt > 0:
                     text = text + f" (auf {zahl_als_text(gesetzt)})"
+                if ist_allin(zustand, name):
+                    text = text + " ALL-IN"
                 print(text)
                 zeige_stand(zustand)
         except ValueError as fehler:
@@ -195,27 +223,42 @@ def spiele_live_hand(db, namen, small_blind, big_blind):
 
     try:
         if len(zustand["aktiv"]) == 1:
-            gewinner = list(zustand["aktiv"])
+            gewinner_pro_pot = gewinner_ohne_showdown(zustand)
             gezeigte = {}
         else:
-            gewinner, gezeigte = frage_showdown(zustand)
+            gewinner_pro_pot, gezeigte = frage_showdown(zustand)
     except EOFError:
-        return False
+        return False, stacks
 
-    ergebnis = abrechnen(db, zustand, gewinner, gezeigte)
-    print(f"   Pot {zahl_als_text(pot(zustand))} geht an: {', '.join(gewinner)}")
+    ergebnis = abrechnen(db, zustand, gewinner_pro_pot, gezeigte)
+    pots = berechne_pots(zustand)
+    for i in range(len(pots)):
+        name_pot = "Pot" if len(pots) == 1 else ("Hauptpot" if i == 0 else f"Side Pot {i}")
+        print(f"   {name_pot} {zahl_als_text(pots[i]['betrag'])} geht an: "
+              f"{', '.join(gewinner_pro_pot[i])}")
     for name in zustand["namen"]:
         if ergebnis[name] != 0:
             print(f"   {name:<10} {ergebnis[name]:+g}")
-    return True
+
+    neue_stacks = dict(stacks)
+    neue_stacks.update(zustand["stacks"])
+    for name, betrag in nachkaeufe:
+        neue_stacks = rebuy(neue_stacks, name, betrag)
+    return True, neue_stacks
 
 
 def frage_showdown(zustand):
-    """Fragt die gezeigten Karten ab und ermittelt die Gewinner.
+    """Fragt die gezeigten Karten ab und ermittelt die Gewinner jedes Pots.
 
-    Gibt (gewinner, gezeigte) zurueck.
+    Gibt (gewinner_pro_pot, gezeigte) zurueck.
     """
+    pots = berechne_pots(zustand)
     print(f"   Showdown zwischen {', '.join(zustand['aktiv'])}.")
+    if len(pots) > 1:
+        for i in range(len(pots)):
+            name_pot = "Hauptpot" if i == 0 else f"Side Pot {i}"
+            print(f"   {name_pot} {zahl_als_text(pots[i]['betrag'])}: "
+                  f"{', '.join(pots[i]['berechtigte'])}")
     print("   Karten eingeben, leer lassen = Karten nicht gezeigt.")
     while True:
         gezeigte = {}
@@ -225,24 +268,38 @@ def frage_showdown(zustand):
                 if text != "":
                     gezeigte[name] = lies_karten(text)
 
-            if len(gezeigte) > 0:
-                gewinner = showdown_gewinner(zustand, gezeigte)
-                for name, karten in gezeigte.items():
-                    wert = bewerte_hand(karten + zustand["board"])
-                    print(f"   {name:<10} {karten_als_text(karten)}   {handart_name(wert)}")
-                return gewinner, gezeigte
+            gewinner_pro_pot = showdown_gewinner(zustand, gezeigte)
+            for name, karten in gezeigte.items():
+                wert = bewerte_hand(karten + zustand["board"])
+                print(f"   {name:<10} {karten_als_text(karten)}   {handart_name(wert)}")
 
-            # Notloesung: keiner zeigt, Gewinner direkt eingeben.
-            text = input("   Keiner zeigt. Wer gewinnt? (Namen mit Komma): ")
-            gewinner = []
-            for teil in text.split(","):
-                if teil.strip() != "":
-                    gewinner.append(finde_spieler(teil.strip(), zustand["aktiv"]))
-            if len(gewinner) == 0:
-                raise ValueError("Bitte mindestens einen Namen eingeben")
-            return gewinner, gezeigte
+            # Notloesung: Pots, bei denen keiner gezeigt hat, von Hand vergeben.
+            for i in range(len(pots)):
+                if gewinner_pro_pot[i] is None:
+                    berechtigte = pots[i]["berechtigte"]
+                    text = input(f"   Keiner zeigt. Wer gewinnt {zahl_als_text(pots[i]['betrag'])} "
+                                 f"({', '.join(berechtigte)})? Namen mit Komma: ")
+                    gewinner = []
+                    for teil in text.split(","):
+                        if teil.strip() != "":
+                            gewinner.append(finde_spieler(teil.strip(), berechtigte))
+                    if len(gewinner) == 0:
+                        raise ValueError("Bitte mindestens einen Namen eingeben")
+                    gewinner_pro_pot[i] = gewinner
+            return gewinner_pro_pot, gezeigte
         except ValueError as fehler:
             print(f"   Fehler: {fehler} -- bitte nochmal.")
+
+
+def frage_zahl(frage):
+    while True:
+        try:
+            zahl = lies_zahl(input(frage).strip())
+            if zahl > 0:
+                return zahl
+        except ValueError:
+            pass
+        print("Bitte eine Zahl groesser als 0 eingeben.")
 
 
 def frage_blinds():
@@ -270,17 +327,51 @@ def frage_namen():
         print("Bitte mindestens zwei verschiedene Namen eingeben.")
 
 
+def pruefe_pleite(namen, stacks):
+    """Fragt bei Spielern ohne Chips nach einem Rebuy. Wer keinen macht, setzt aus.
+
+    Gibt (namen, stacks) fuer die naechste Hand zurueck.
+    """
+    neue_namen = []
+    for name in namen:
+        while stacks[name] <= 0:
+            text = input(f"{name} hat keine Chips mehr. Rebuy-Betrag (leer = setzt aus): ")
+            if text.strip() == "":
+                break
+            try:
+                stacks = rebuy(stacks, name, lies_zahl(text.strip()))
+            except ValueError as fehler:
+                print(f"   Fehler: {fehler}")
+        if stacks[name] > 0:
+            neue_namen.append(name)
+        else:
+            print(f"   {name} setzt aus.")
+    return neue_namen, stacks
+
+
 def live_modus(pfad):
     db = oeffne_datenbank(pfad)
     print(f"Live-Modus, Datenbank: {pfad}")
     try:
         namen = frage_namen()
         small_blind, big_blind = frage_blinds()
+        startstack = frage_zahl("Startstack fuer jeden (z. B. 200): ")
+        stacks = {}
+        for name in namen:
+            stacks[name] = startstack
         print(HILFE)
-        while spiele_live_hand(db, namen, small_blind, big_blind):
-            namen = rotiere(namen)  # der Button wandert weiter
+        alle_namen = list(namen)
+        while True:
+            weiter, stacks = spiele_live_hand(db, namen, small_blind, big_blind, stacks)
+            if not weiter:
+                break
+            namen, stacks = pruefe_pleite(rotiere(namen), stacks)  # Button wandert
+            if len(namen) < 2:
+                print("Weniger als zwei Spieler mit Chips, Ende.")
+                break
         print()
-        zeige_statistik(db, namen)
+        print("Stacks:", stacks_als_text(alle_namen, stacks))
+        zeige_statistik(db, alle_namen)
     except (EOFError, KeyboardInterrupt):
         print()
     finally:

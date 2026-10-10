@@ -8,7 +8,8 @@ Tabellen:
 - spieler:     ein Eintrag pro Person (Name ist eindeutig)
 - haende:      ein Eintrag pro gespielter Hand (Blinds, Board, Zeitpunkt)
 - teilnehmer:  wer bei welcher Hand dabei war (Sitzplatz, Handkarten falls bekannt,
-               wie viel er insgesamt gesetzt und wie viel er gewonnen hat)
+               Stack zu Beginn der Hand, wie viel er insgesamt gesetzt und
+               wie viel er gewonnen hat)
 - aktionen:    jede einzelne Aktion: Strasse, Art, Betrag, in Reihenfolge
 """
 
@@ -40,6 +41,7 @@ CREATE TABLE IF NOT EXISTS teilnehmer (
     spieler_id  INTEGER NOT NULL REFERENCES spieler(id),
     sitzplatz   INTEGER NOT NULL,
     handkarten  TEXT,
+    stack       REAL,
     investiert  REAL,
     gewonnen    REAL,
     PRIMARY KEY (hand_id, spieler_id)
@@ -60,6 +62,7 @@ CREATE TABLE IF NOT EXISTS aktionen (
 NEUE_SPALTEN = [
     ("teilnehmer", "investiert", "REAL"),
     ("teilnehmer", "gewonnen", "REAL"),
+    ("teilnehmer", "stack", "REAL"),
 ]
 
 
@@ -105,8 +108,11 @@ def spieler_id(verbindung, name):
     return cursor.lastrowid
 
 
-def neue_hand(verbindung, namen, small_blind, big_blind, zeitpunkt=None):
-    """Legt eine neue Hand an. `namen` in Sitzreihenfolge. Gibt die hand_id zurueck."""
+def neue_hand(verbindung, namen, small_blind, big_blind, stacks=None, zeitpunkt=None):
+    """Legt eine neue Hand an. `namen` in Sitzreihenfolge. Gibt die hand_id zurueck.
+
+    stacks: optional {name: chips zu Beginn der Hand}
+    """
     if len(namen) < 2:
         raise ValueError("Eine Hand braucht mindestens zwei Spieler")
     if len(set(namen)) != len(namen):
@@ -120,9 +126,12 @@ def neue_hand(verbindung, namen, small_blind, big_blind, zeitpunkt=None):
     )
     hand_id = cursor.lastrowid
     for sitzplatz in range(len(namen)):
+        name = namen[sitzplatz]
+        stack = None if stacks is None else stacks[name]
         verbindung.execute(
-            "INSERT INTO teilnehmer (hand_id, spieler_id, sitzplatz) VALUES (?, ?, ?)",
-            (hand_id, spieler_id(verbindung, namen[sitzplatz]), sitzplatz),
+            "INSERT INTO teilnehmer (hand_id, spieler_id, sitzplatz, stack) "
+            "VALUES (?, ?, ?, ?)",
+            (hand_id, spieler_id(verbindung, name), sitzplatz, stack),
         )
     verbindung.commit()
     return hand_id

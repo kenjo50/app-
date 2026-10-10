@@ -6,10 +6,14 @@ from poker.deck import lies_karten
 from poker.live import (
     abrechnen,
     beende_hand,
+    berechne_pots,
+    gewinner_ohne_showdown,
+    ist_allin,
     finde_spieler,
     lies_aktion,
     naechste_strasse,
     pot,
+    rebuy,
     rotiere,
     showdown_gewinner,
     starte_hand,
@@ -19,6 +23,7 @@ from poker.live import (
 from poker.profile import berechne_statistik, lade_aktionen, oeffne_datenbank
 
 NAMEN = ["Anna", "Ben", "Clara"]  # Anna = Small Blind, Ben = Big Blind
+STACKS = {"Anna": 200, "Ben": 200, "Clara": 200}
 
 FLOP = lies_karten("Ks 9h 4d")
 TURN = lies_karten("2c")
@@ -68,7 +73,7 @@ def test_finde_spieler_mehrdeutig():
 
 
 def test_blinds_werden_gesetzt(db):
-    zustand = starte_hand(db, NAMEN, 1, 2)
+    zustand = starte_hand(db, NAMEN, 1, 2, STACKS)
     assert pot(zustand) == 3
     assert zu_callen(zustand, "Anna") == 1
     assert zu_callen(zustand, "Ben") == 0
@@ -76,7 +81,7 @@ def test_blinds_werden_gesetzt(db):
 
 
 def test_ganze_hand(db):
-    z = starte_hand(db, NAMEN, 1, 2)
+    z = starte_hand(db, NAMEN, 1, 2, STACKS)
     verarbeite_aktion(db, z, "Clara", "raise", 6)
     verarbeite_aktion(db, z, "Anna", "fold")
     assert verarbeite_aktion(db, z, "Ben", "call") == ("call", 6)
@@ -117,7 +122,7 @@ def test_ganze_hand(db):
 
 
 def test_hand_endet_wenn_alle_folden(db):
-    z = starte_hand(db, NAMEN, 1, 2)
+    z = starte_hand(db, NAMEN, 1, 2, STACKS)
     verarbeite_aktion(db, z, "Clara", "fold")
     verarbeite_aktion(db, z, "Anna", "fold")
     assert z["beendet"]
@@ -126,7 +131,7 @@ def test_hand_endet_wenn_alle_folden(db):
 
 
 def test_big_blind_darf_checken(db):
-    z = starte_hand(db, NAMEN, 1, 2)
+    z = starte_hand(db, NAMEN, 1, 2, STACKS)
     verarbeite_aktion(db, z, "Clara", "call")
     verarbeite_aktion(db, z, "Anna", "call")
     assert verarbeite_aktion(db, z, "Ben", "call") == ("check", 0)
@@ -134,7 +139,7 @@ def test_big_blind_darf_checken(db):
 
 
 def test_ungueltige_aktionen(db):
-    z = starte_hand(db, NAMEN, 1, 2)
+    z = starte_hand(db, NAMEN, 1, 2, STACKS)
     with pytest.raises(ValueError):
         verarbeite_aktion(db, z, "Clara", "check")      # 2 offen
     with pytest.raises(ValueError):
@@ -147,14 +152,14 @@ def test_ungueltige_aktionen(db):
 
 
 def test_strasse_erst_wenn_alle_bezahlt(db):
-    z = starte_hand(db, NAMEN, 1, 2)
+    z = starte_hand(db, NAMEN, 1, 2, STACKS)
     verarbeite_aktion(db, z, "Clara", "raise", 6)
     with pytest.raises(ValueError):
         naechste_strasse(db, z, FLOP)
 
 
 def test_ende_erst_nach_river(db):
-    z = starte_hand(db, NAMEN, 1, 2)
+    z = starte_hand(db, NAMEN, 1, 2, STACKS)
     with pytest.raises(ValueError):
         beende_hand(z)
 
@@ -163,7 +168,7 @@ def test_ende_erst_nach_river(db):
 
 
 def test_preflop_reihenfolge(db):
-    z = starte_hand(db, NAMEN, 1, 2)
+    z = starte_hand(db, NAMEN, 1, 2, STACKS)
     assert z["am_zug"] == "Clara"  # links vom Big Blind
     with pytest.raises(ValueError):
         verarbeite_aktion(db, z, "Anna", "call")  # Anna ist noch nicht dran
@@ -175,7 +180,7 @@ def test_preflop_reihenfolge(db):
 
 def test_big_blind_option(db):
     # Alle callen, aber der Big Blind darf noch erhoehen.
-    z = starte_hand(db, NAMEN, 1, 2)
+    z = starte_hand(db, NAMEN, 1, 2, STACKS)
     verarbeite_aktion(db, z, "Clara", "call")
     verarbeite_aktion(db, z, "Anna", "call")
     with pytest.raises(ValueError):
@@ -190,7 +195,7 @@ def test_big_blind_option(db):
 
 
 def test_nach_dem_flop_beginnt_der_small_blind(db):
-    z = starte_hand(db, NAMEN, 1, 2)
+    z = starte_hand(db, NAMEN, 1, 2, STACKS)
     verarbeite_aktion(db, z, "Clara", "call")
     verarbeite_aktion(db, z, "Anna", "call")
     verarbeite_aktion(db, z, "Ben", "check")
@@ -199,7 +204,7 @@ def test_nach_dem_flop_beginnt_der_small_blind(db):
 
 
 def test_gefoldete_werden_uebersprungen(db):
-    z = starte_hand(db, NAMEN, 1, 2)
+    z = starte_hand(db, NAMEN, 1, 2, STACKS)
     verarbeite_aktion(db, z, "Clara", "call")
     verarbeite_aktion(db, z, "Anna", "fold")
     verarbeite_aktion(db, z, "Ben", "check")
@@ -208,7 +213,7 @@ def test_gefoldete_werden_uebersprungen(db):
 
 
 def test_heads_up_reihenfolge(db):
-    z = starte_hand(db, ["Anna", "Ben"], 1, 2)
+    z = starte_hand(db, ["Anna", "Ben"], 1, 2, STACKS)
     assert z["am_zug"] == "Anna"  # preflop: Small Blind (= Button) zuerst
     verarbeite_aktion(db, z, "Anna", "call")
     assert z["am_zug"] == "Ben"   # Big Blind hat noch die Option
@@ -218,7 +223,7 @@ def test_heads_up_reihenfolge(db):
 
 
 def test_runde_vorbei_keine_aktion_mehr(db):
-    z = starte_hand(db, NAMEN, 1, 2)
+    z = starte_hand(db, NAMEN, 1, 2, STACKS)
     verarbeite_aktion(db, z, "Clara", "call")
     verarbeite_aktion(db, z, "Anna", "call")
     verarbeite_aktion(db, z, "Ben", "check")
@@ -234,7 +239,7 @@ def spiele_bis_showdown(db):
 
     Pot: Anna 1 (Small Blind) + Ben 2 + Clara 2 = 5
     """
-    z = starte_hand(db, NAMEN, 1, 2)
+    z = starte_hand(db, NAMEN, 1, 2, STACKS)
     verarbeite_aktion(db, z, "Clara", "call")
     verarbeite_aktion(db, z, "Anna", "fold")
     verarbeite_aktion(db, z, "Ben", "check")
@@ -247,7 +252,7 @@ def spiele_bis_showdown(db):
 
 
 def test_board_karten_pruefen(db):
-    z = starte_hand(db, NAMEN, 1, 2)
+    z = starte_hand(db, NAMEN, 1, 2, STACKS)
     verarbeite_aktion(db, z, "Clara", "call")
     verarbeite_aktion(db, z, "Anna", "call")
     verarbeite_aktion(db, z, "Ben", "check")
@@ -263,29 +268,28 @@ def test_showdown_bessere_hand_gewinnt(db):
     z = spiele_bis_showdown(db)
     gezeigte = {"Ben": lies_karten("Kh Qc"), "Clara": lies_karten("9s 9c")}
     # Board Ks 9h 4d 2c 7s: Clara hat Drilling Neunen, Ben ein Koenigspaar
-    assert showdown_gewinner(z, gezeigte) == ["Clara"]
-    ergebnis = abrechnen(db, z, ["Clara"], gezeigte)
+    assert showdown_gewinner(z, gezeigte) == [["Clara"]]
+    ergebnis = abrechnen(db, z, [["Clara"]], gezeigte)
     assert ergebnis == {"Anna": -1, "Ben": -2, "Clara": 3}
 
 
 def test_showdown_split_pot(db):
     z = spiele_bis_showdown(db)
     gezeigte = {"Ben": lies_karten("Ah 3c"), "Clara": lies_karten("Ac 3d")}
-    assert showdown_gewinner(z, gezeigte) == ["Ben", "Clara"]
-    ergebnis = abrechnen(db, z, ["Ben", "Clara"], gezeigte)
+    assert showdown_gewinner(z, gezeigte) == [["Ben", "Clara"]]
+    ergebnis = abrechnen(db, z, [["Ben", "Clara"]], gezeigte)
     assert ergebnis == {"Anna": -1, "Ben": 0.5, "Clara": 0.5}
 
 
 def test_wer_nicht_zeigt_verliert(db):
     z = spiele_bis_showdown(db)
     # Nur Ben zeigt, Clara wirft ihre Karten weg.
-    assert showdown_gewinner(z, {"Ben": lies_karten("2h 3h")}) == ["Ben"]
+    assert showdown_gewinner(z, {"Ben": lies_karten("2h 3h")}) == [["Ben"]]
 
 
 def test_showdown_fehler(db):
     z = spiele_bis_showdown(db)
-    with pytest.raises(ValueError):
-        showdown_gewinner(z, {})  # keiner zeigt
+    assert showdown_gewinner(z, {}) == [None]  # keiner zeigt -> von Hand angeben
     with pytest.raises(ValueError):
         showdown_gewinner(z, {"Ben": lies_karten("Ks Qc")})  # Ks liegt auf dem Board
     with pytest.raises(ValueError):
@@ -293,33 +297,209 @@ def test_showdown_fehler(db):
 
 
 def test_alle_folden_gewinner_bekommt_pot(db):
-    z = starte_hand(db, NAMEN, 1, 2)
+    z = starte_hand(db, NAMEN, 1, 2, STACKS)
     verarbeite_aktion(db, z, "Clara", "raise", 6)
     verarbeite_aktion(db, z, "Anna", "fold")
     verarbeite_aktion(db, z, "Ben", "fold")
-    ergebnis = abrechnen(db, z, ["Clara"])
+    ergebnis = abrechnen(db, z, [["Clara"]])
     assert ergebnis == {"Anna": -1, "Ben": -2, "Clara": 3}
     with pytest.raises(ValueError):
-        abrechnen(db, z, ["Clara"])  # nicht zweimal
+        abrechnen(db, z, [["Clara"]])  # nicht zweimal
 
 
 def test_abrechnen_erst_am_ende(db):
-    z = starte_hand(db, NAMEN, 1, 2)
+    z = starte_hand(db, NAMEN, 1, 2, STACKS)
     with pytest.raises(ValueError):
-        abrechnen(db, z, ["Clara"])
+        abrechnen(db, z, [["Clara"]])
 
 
 def test_bb_pro_100(db):
     # Clara gewinnt 3 (= 1,5 BB), dann 3 (= 1,5 BB): 2 Haende, +3 BB
     # -> 1,5 BB pro Hand -> 150 bb/100
     for i in range(2):
-        z = starte_hand(db, NAMEN, 1, 2)
+        z = starte_hand(db, NAMEN, 1, 2, STACKS)
         verarbeite_aktion(db, z, "Clara", "raise", 6)
         verarbeite_aktion(db, z, "Anna", "fold")
         verarbeite_aktion(db, z, "Ben", "fold")
-        abrechnen(db, z, ["Clara"])
+        abrechnen(db, z, [["Clara"]])
     assert berechne_statistik(db, "Clara")["bb_pro_100"] == pytest.approx(150)
     assert berechne_statistik(db, "Ben")["bb_pro_100"] == pytest.approx(-100)
+
+
+# ---------- Stacks, All-in, Side Pots ----------
+
+BOARD = lies_karten("Ks 9h 4d 2c 7s")
+
+
+def board_hinlegen(db, z):
+    """Hilfsfunktion: Flop, Turn und River hinlegen (keiner muss mehr handeln)."""
+    naechste_strasse(db, z, BOARD[:3])
+    naechste_strasse(db, z, BOARD[3:4])
+    naechste_strasse(db, z, BOARD[4:])
+    beende_hand(z)
+
+
+def test_stacks_werden_abgezogen(db):
+    z = starte_hand(db, NAMEN, 1, 2, STACKS)
+    assert z["stacks"] == {"Anna": 199, "Ben": 198, "Clara": 200}
+    verarbeite_aktion(db, z, "Clara", "raise", 6)
+    assert z["stacks"]["Clara"] == 194
+
+
+def test_raise_hoeher_als_stack_geht_nicht(db):
+    z = starte_hand(db, NAMEN, 1, 2, {"Anna": 200, "Ben": 200, "Clara": 50})
+    with pytest.raises(ValueError):
+        verarbeite_aktion(db, z, "Clara", "raise", 60)
+    verarbeite_aktion(db, z, "Clara", "raise", 50)  # genau alles geht
+    assert ist_allin(z, "Clara")
+
+
+def test_allin_kuerzel(db):
+    z = starte_hand(db, NAMEN, 1, 2, {"Anna": 200, "Ben": 200, "Clara": 50})
+    assert verarbeite_aktion(db, z, "Clara", "allin") == ("raise", 50)
+    assert lies_aktion("a", NAMEN, am_zug="Anna") == ("Anna", "allin", None)
+
+
+def test_call_mit_zu_wenig_chips(db):
+    # Clara hat nur 30 und callt einen Raise auf 100 -> all-in fuer 30
+    z = starte_hand(db, NAMEN, 1, 2, {"Anna": 200, "Ben": 200, "Clara": 30})
+    verarbeite_aktion(db, z, "Clara", "call")
+    verarbeite_aktion(db, z, "Anna", "raise", 100)
+    verarbeite_aktion(db, z, "Ben", "fold")
+    assert z["am_zug"] == "Clara"
+    assert verarbeite_aktion(db, z, "Clara", "call") == ("call", 30)
+    assert ist_allin(z, "Clara")
+    assert z["am_zug"] is None
+
+
+def test_allin_spieler_wird_uebersprungen(db):
+    z = starte_hand(db, NAMEN, 1, 2, {"Anna": 200, "Ben": 200, "Clara": 30})
+    verarbeite_aktion(db, z, "Clara", "allin")  # raise auf 30
+    verarbeite_aktion(db, z, "Anna", "call")
+    verarbeite_aktion(db, z, "Ben", "call")
+    naechste_strasse(db, z, FLOP)
+    verarbeite_aktion(db, z, "Anna", "check")
+    assert z["am_zug"] == "Ben"   # Clara ist all-in und wird uebersprungen
+    verarbeite_aktion(db, z, "Ben", "check")
+    assert z["am_zug"] is None
+
+
+def test_alle_allin_keine_setzrunden_mehr(db):
+    z = starte_hand(db, ["Anna", "Ben"], 1, 2, {"Anna": 50, "Ben": 80})
+    verarbeite_aktion(db, z, "Anna", "allin")
+    verarbeite_aktion(db, z, "Ben", "call")
+    # Ben hat noch Chips, aber keiner kann mehr gegen ihn setzen.
+    naechste_strasse(db, z, FLOP)
+    assert z["am_zug"] is None
+    naechste_strasse(db, z, TURN)
+    naechste_strasse(db, z, RIVER)
+    beende_hand(z)
+    assert z["beendet"]
+
+
+def test_blind_groesser_als_stack(db):
+    # Ben hat nur 1 Chip und ist mit dem Big Blind schon all-in.
+    z = starte_hand(db, NAMEN, 1, 2, {"Anna": 200, "Ben": 1, "Clara": 200})
+    assert ist_allin(z, "Ben")
+    assert z["investiert"]["Ben"] == 1
+    assert z["hoechster"] == 1
+
+
+def test_side_pots_berechnen(db):
+    # Anna all-in 30, Ben und Clara je 100
+    z = starte_hand(db, NAMEN, 1, 2, {"Anna": 30, "Ben": 200, "Clara": 200})
+    verarbeite_aktion(db, z, "Clara", "raise", 100)
+    verarbeite_aktion(db, z, "Anna", "allin")   # call fuer 30
+    verarbeite_aktion(db, z, "Ben", "call")
+    assert berechne_pots(z) == [
+        {"betrag": 90, "berechtigte": ["Anna", "Ben", "Clara"]},
+        {"betrag": 140, "berechtigte": ["Ben", "Clara"]},
+    ]
+
+
+def test_side_pot_mit_gefoldetem_spieler(db):
+    # Ben callt 10 und foldet spaeter: sein Geld bleibt im Pot.
+    z = starte_hand(db, NAMEN, 1, 2, {"Anna": 20, "Ben": 200, "Clara": 200})
+    verarbeite_aktion(db, z, "Clara", "raise", 10)
+    verarbeite_aktion(db, z, "Anna", "allin")   # raise auf 20
+    verarbeite_aktion(db, z, "Ben", "call")
+    verarbeite_aktion(db, z, "Clara", "call")
+    naechste_strasse(db, z, FLOP)
+    verarbeite_aktion(db, z, "Ben", "raise", 50)
+    verarbeite_aktion(db, z, "Clara", "raise", 150)
+    verarbeite_aktion(db, z, "Ben", "fold")
+    pots = berechne_pots(z)
+    assert pots[0] == {"betrag": 60, "berechtigte": ["Anna", "Clara"]}
+    # Side Pot: Bens 50 und Claras 150, beide ueber den 20 aus dem Hauptpot
+    assert pots[1] == {"betrag": 200, "berechtigte": ["Clara"]}
+    assert pot(z) == 260
+
+
+def test_abrechnung_mit_side_pot(db):
+    # Anna (all-in 30) hat die beste Hand, Ben die zweitbeste.
+    z = starte_hand(db, NAMEN, 1, 2, {"Anna": 30, "Ben": 200, "Clara": 200})
+    verarbeite_aktion(db, z, "Clara", "raise", 100)
+    verarbeite_aktion(db, z, "Anna", "allin")
+    verarbeite_aktion(db, z, "Ben", "call")
+    naechste_strasse(db, z, BOARD[:3])
+    verarbeite_aktion(db, z, "Ben", "check")
+    verarbeite_aktion(db, z, "Clara", "check")
+    naechste_strasse(db, z, BOARD[3:4])
+    verarbeite_aktion(db, z, "Ben", "check")
+    verarbeite_aktion(db, z, "Clara", "check")
+    naechste_strasse(db, z, BOARD[4:])
+    verarbeite_aktion(db, z, "Ben", "check")
+    verarbeite_aktion(db, z, "Clara", "check")
+    beende_hand(z)
+
+    gezeigte = {
+        "Anna": lies_karten("Kh Kc"),   # Drilling Koenige
+        "Ben": lies_karten("9s 9c"),    # Drilling Neunen
+        "Clara": lies_karten("Ad Qd"),  # nur Ass hoch
+    }
+    gewinner = showdown_gewinner(z, gezeigte)
+    assert gewinner == [["Anna"], ["Ben"]]
+    ergebnis = abrechnen(db, z, gewinner, gezeigte)
+    assert ergebnis == {"Anna": 60, "Ben": 40, "Clara": -100}
+    assert z["stacks"] == {"Anna": 90, "Ben": 240, "Clara": 100}
+
+
+def test_zu_hoher_bet_kommt_zurueck(db):
+    # Clara setzt 100, Anna kann nur 30 callen: 70 bekommt Clara zurueck.
+    z = starte_hand(db, ["Anna", "Clara"], 1, 2, {"Anna": 30, "Clara": 200})
+    verarbeite_aktion(db, z, "Anna", "call")
+    verarbeite_aktion(db, z, "Clara", "raise", 100)
+    verarbeite_aktion(db, z, "Anna", "call")    # all-in fuer 30
+    board_hinlegen(db, z)
+    gezeigte = {"Anna": lies_karten("Kh Kc"), "Clara": lies_karten("Ad Qd")}
+    gewinner = showdown_gewinner(z, gezeigte)
+    assert gewinner == [["Anna"], ["Clara"]]
+    ergebnis = abrechnen(db, z, gewinner, gezeigte)
+    assert ergebnis == {"Anna": 30, "Clara": -30}
+
+
+def test_gewinner_ohne_showdown(db):
+    z = starte_hand(db, NAMEN, 1, 2, STACKS)
+    verarbeite_aktion(db, z, "Clara", "raise", 6)
+    verarbeite_aktion(db, z, "Anna", "fold")
+    verarbeite_aktion(db, z, "Ben", "fold")
+    abrechnen(db, z, gewinner_ohne_showdown(z))
+    assert z["stacks"] == {"Anna": 199, "Ben": 198, "Clara": 203}
+
+
+def test_ohne_chips_kein_mitspielen(db):
+    with pytest.raises(ValueError):
+        starte_hand(db, NAMEN, 1, 2, {"Anna": 200, "Ben": 0, "Clara": 200})
+
+
+def test_rebuy():
+    stacks = {"Anna": 0, "Ben": 150}
+    neue = rebuy(stacks, "Anna", 100)
+    assert neue == {"Anna": 100, "Ben": 150}
+    assert stacks["Anna"] == 0  # das Original bleibt unveraendert
+    assert rebuy(neue, "Clara", 200)["Clara"] == 200
+    with pytest.raises(ValueError):
+        rebuy(stacks, "Anna", 0)
 
 
 def test_rotiere():

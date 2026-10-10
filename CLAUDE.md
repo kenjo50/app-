@@ -28,7 +28,10 @@ und schlaegt sie einen Zufalls-Bot? Messung in bb/100 ueber viele Haende.
 - Reihenfolge: `namen` beginnt mit dem Small Blind. Preflop beginnt Platz 2
   (heads-up Platz 0), ab dem Flop der erste aktive ab Platz 0 (heads-up Platz 1).
   `noch_dran` = wer in der Setzrunde noch handeln muss; bet/raise setzt es
-  auf alle anderen aktiven Spieler zurueck. `am_zug` ist None, wenn die Runde vorbei ist.
+  auf alle anderen aktiven Spieler mit Chips zurueck. `am_zug` ist None, wenn die Runde vorbei ist.
+- Stacks: `starte_hand(..., stacks)`; all-in = aktiv mit Stack 0, handelt nicht mehr.
+  `berechne_pots` bildet Hauptpot/Side Pots aus den Einsatz-Stufen der aktiven Spieler;
+  `showdown_gewinner` und `abrechnen` arbeiten mit einer Gewinnerliste pro Pot.
 - Am Ende jeder Hand: Showdown-Karten eingeben -> Gewinner per Handbewertung;
   zeigt keiner, Gewinner direkt angeben. `teilnehmer.investiert/gewonnen`
   ergeben bb/100. Neue Spalten in `NEUE_SPALTEN` eintragen (Nachruesten alter DBs).
