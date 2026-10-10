@@ -22,7 +22,12 @@ from poker.live import (
     verarbeite_aktion,
     zu_callen,
 )
-from poker.profile import berechne_statistik, lade_aktionen, oeffne_datenbank
+from poker.profile import (
+    anzahl_abgebrochene,
+    berechne_statistik,
+    lade_aktionen,
+    oeffne_datenbank,
+)
 
 NAMEN = ["Anna", "Ben", "Clara"]  # Anna = Small Blind, Ben = Big Blind
 STACKS = {"Anna": 200, "Ben": 200, "Clara": 200}
@@ -105,6 +110,7 @@ def test_ganze_hand(db):
     verarbeite_aktion(db, z, "Clara", "check")
     beende_hand(z)
     assert z["beendet"]
+    abrechnen(db, z, [["Clara"]])
 
     assert lade_aktionen(db, z["hand_id"]) == [
         ("Clara", "preflop", "raise", 6),
@@ -570,6 +576,31 @@ def test_volle_erhoehung_oeffnet_wieder(db):
     verarbeite_aktion(db, z, "Ben", "raise", 20)
     assert darf_erhoehen(z, "Clara")
     verarbeite_aktion(db, z, "Clara", "raise", 34)
+
+
+# ---------- Abgebrochene Haende ----------
+
+
+def test_abgebrochene_hand_zaehlt_nicht(db):
+    # Hand 1 wird fertig gespielt, Hand 2 mittendrin abgebrochen (quit).
+    z = starte_hand(db, NAMEN, 1, 2, STACKS)
+    verarbeite_aktion(db, z, "Clara", "raise", 6)
+    verarbeite_aktion(db, z, "Anna", "fold")
+    verarbeite_aktion(db, z, "Ben", "fold")
+    abrechnen(db, z, gewinner_ohne_showdown(z))
+
+    abgebrochen = starte_hand(db, NAMEN, 1, 2, STACKS)
+    verarbeite_aktion(db, abgebrochen, "Clara", "call")
+    verarbeite_aktion(db, abgebrochen, "Anna", "call")
+    # ... hier wurde quit eingegeben
+
+    clara = berechne_statistik(db, "Clara")
+    assert clara["haende"] == 1
+    assert clara["vpip"] == 1.0 and clara["pfr"] == 1.0
+    anna = berechne_statistik(db, "Anna")
+    assert anna["haende"] == 1
+    assert anna["vpip"] == 0   # der Call aus der abgebrochenen Hand zaehlt nicht
+    assert anzahl_abgebrochene(db) == 1
 
 
 def test_rotiere():

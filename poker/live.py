@@ -37,6 +37,7 @@ from poker.profile import (
     aktion_speichern,
     board_speichern,
     ergebnis_speichern,
+    hand_abschliessen,
     handkarten_speichern,
     neue_hand,
 )
@@ -536,6 +537,7 @@ def abrechnen(verbindung, zustand, gewinner_pro_pot, gezeigte=None):
         ergebnis[name] = gewonnen[name] - zustand["investiert"][name]
     for name, karten in gezeigte.items():
         handkarten_speichern(verbindung, zustand["hand_id"], name, karten)
+    hand_abschliessen(verbindung, zustand["hand_id"])
     zustand["abgerechnet"] = True
     return ergebnis
 

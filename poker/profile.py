@@ -6,7 +6,10 @@ und die echte Datei bleibt unberuehrt.
 
 Tabellen:
 - spieler:     ein Eintrag pro Person (Name ist eindeutig)
-- haende:      ein Eintrag pro gespielter Hand (Blinds, Board, Zeitpunkt)
+- haende:      ein Eintrag pro gespielter Hand (Blinds, Board, Zeitpunkt).
+               abgeschlossen = 1 erst nach der Abrechnung; abgebrochene Haende
+               (z. B. quit mitten in der Hand) bleiben 0 und zaehlen nicht
+               in der Statistik.
 - teilnehmer:  wer bei welcher Hand dabei war (Sitzplatz, Handkarten falls bekannt,
                Stack zu Beginn der Hand, wie viel er insgesamt gesetzt und
                wie viel er gewonnen hat)
@@ -38,7 +41,8 @@ CREATE TABLE IF NOT EXISTS haende (
     zeitpunkt    TEXT NOT NULL,
     small_blind  REAL NOT NULL,
     big_blind    REAL NOT NULL,
-    board        TEXT
+    board        TEXT,
+    abgeschlossen INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS teilnehmer (
     hand_id     INTEGER NOT NULL REFERENCES haende(id),
@@ -92,10 +96,15 @@ CREATE TABLE IF NOT EXISTS buchungen (
 
 # Spalten, die spaeter dazugekommen sind. Aeltere Datenbank-Dateien
 # bekommen sie beim Oeffnen automatisch nachgeruestet.
+# Der vierte Eintrag ist optional: SQL, das alte Daten nach dem Hinzufuegen anpasst.
 NEUE_SPALTEN = [
-    ("teilnehmer", "investiert", "REAL"),
-    ("teilnehmer", "gewonnen", "REAL"),
-    ("teilnehmer", "stack", "REAL"),
+    ("teilnehmer", "investiert", "REAL", None),
+    ("teilnehmer", "gewonnen", "REAL", None),
+    ("teilnehmer", "stack", "REAL", None),
+    # Alte Haende mit gespeichertem Ergebnis gelten als abgeschlossen.
+    ("haende", "abgeschlossen", "INTEGER NOT NULL DEFAULT 0",
+     "UPDATE haende SET abgeschlossen = 1 WHERE id IN "
+     "(SELECT hand_id FROM teilnehmer WHERE gewonnen IS NOT NULL)"),
 ]
 
 
@@ -104,12 +113,14 @@ def oeffne_datenbank(pfad):
     verbindung = sqlite3.connect(pfad)
     verbindung.execute("PRAGMA foreign_keys = ON")
     verbindung.executescript(TABELLEN_SQL)
-    for tabelle, spalte, typ in NEUE_SPALTEN:
+    for tabelle, spalte, typ, nachruesten in NEUE_SPALTEN:
         vorhandene = []
         for zeile in verbindung.execute(f"PRAGMA table_info({tabelle})"):
             vorhandene.append(zeile[1])  # zeile[1] ist der Spaltenname
         if spalte not in vorhandene:
             verbindung.execute(f"ALTER TABLE {tabelle} ADD COLUMN {spalte} {typ}")
+            if nachruesten is not None:
+                verbindung.execute(nachruesten)
     verbindung.commit()
     return verbindung
 
@@ -236,6 +247,19 @@ def ergebnis_speichern(verbindung, hand_id, name, investiert, gewonnen):
     verbindung.commit()
 
 
+def hand_abschliessen(verbindung, hand_id):
+    """Markiert eine Hand als fertig abgerechnet. Erst dann zaehlt sie in der Statistik."""
+    verbindung.execute("UPDATE haende SET abgeschlossen = 1 WHERE id = ?", (hand_id,))
+    verbindung.commit()
+
+
+def anzahl_abgebrochene(verbindung):
+    """Wie viele Haende wurden angefangen, aber nie abgerechnet?"""
+    return verbindung.execute(
+        "SELECT COUNT(*) FROM haende WHERE abgeschlossen = 0"
+    ).fetchone()[0]
+
+
 def lade_aktionen(verbindung, hand_id):
     """Gibt alle Aktionen einer Hand in Reihenfolge zurueck.
 
@@ -250,7 +274,9 @@ def lade_aktionen(verbindung, hand_id):
 
 
 def berechne_statistik(verbindung, name):
-    """Berechnet die Kennzahlen eines Spielers ueber alle gespeicherten Haende.
+    """Berechnet die Kennzahlen eines Spielers ueber alle abgeschlossenen Haende.
+
+    Abgebrochene Haende (abgeschlossen = 0) zaehlen nicht mit.
 
     Rueckgabe: Dictionary mit
     - "haende": Anzahl Haende, bei denen er dabei war
@@ -258,7 +284,6 @@ def berechne_statistik(verbindung, name):
     - "pfr":    Anteil Haende, in denen er preflop erhoeht (bet/raise)
     - "af":     Aggressionsfaktor nach dem Flop: (bets + raises) / calls
     - "bb_pro_100": Gewinn in Big Blinds pro 100 Haende
-                  (nur Haende, deren Ergebnis gespeichert ist)
 
     Werte, die sich (noch) nicht berechnen lassen, sind None.
     """
@@ -268,13 +293,15 @@ def berechne_statistik(verbindung, name):
     sid = zeile[0]
 
     haende = verbindung.execute(
-        "SELECT COUNT(*) FROM teilnehmer WHERE spieler_id = ?", (sid,)
+        "SELECT COUNT(*) FROM teilnehmer t JOIN haende h ON t.hand_id = h.id "
+        "WHERE t.spieler_id = ? AND h.abgeschlossen = 1", (sid,)
     ).fetchone()[0]
 
     # Pro Hand die preflop-Aktionen sammeln: {hand_id: [aktion, ...]}
     preflop = {}
     for hand_id, aktion in verbindung.execute(
-        "SELECT hand_id, aktion FROM aktionen WHERE spieler_id = ? AND strasse = 'preflop'",
+        "SELECT a.hand_id, a.aktion FROM aktionen a JOIN haende h ON a.hand_id = h.id "
+        "WHERE a.spieler_id = ? AND a.strasse = 'preflop' AND h.abgeschlossen = 1",
         (sid,),
     ):
         if hand_id not in preflop:
@@ -293,7 +320,8 @@ def berechne_statistik(verbindung, name):
     aggressiv = 0
     calls = 0
     for (aktion,) in verbindung.execute(
-        "SELECT aktion FROM aktionen WHERE spieler_id = ? AND strasse != 'preflop'",
+        "SELECT a.aktion FROM aktionen a JOIN haende h ON a.hand_id = h.id "
+        "WHERE a.spieler_id = ? AND a.strasse != 'preflop' AND h.abgeschlossen = 1",
         (sid,),
     ):
         if aktion in AGGRESSIV:
@@ -301,13 +329,13 @@ def berechne_statistik(verbindung, name):
         elif aktion == "call":
             calls = calls + 1
 
-    # Gewinn/Verlust in Big Blinds, nur abgerechnete Haende
+    # Gewinn/Verlust in Big Blinds
     abgerechnet = 0
     summe_bb = 0.0
     for investiert, gewonnen, big_blind in verbindung.execute(
         "SELECT t.investiert, t.gewonnen, h.big_blind "
         "FROM teilnehmer t JOIN haende h ON t.hand_id = h.id "
-        "WHERE t.spieler_id = ? AND t.gewonnen IS NOT NULL",
+        "WHERE t.spieler_id = ? AND t.gewonnen IS NOT NULL AND h.abgeschlossen = 1",
         (sid,),
     ):
         abgerechnet = abgerechnet + 1

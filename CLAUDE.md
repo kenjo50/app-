@@ -35,6 +35,10 @@ und schlaegt sie einen Zufalls-Bot? Messung in bb/100 ueber viele Haende.
 - Am Ende jeder Hand: Showdown-Karten eingeben -> Gewinner per Handbewertung;
   zeigt keiner, Gewinner direkt angeben. `teilnehmer.investiert/gewonnen`
   ergeben bb/100. Neue Spalten in `NEUE_SPALTEN` eintragen (Nachruesten alter DBs).
+- Statistik zaehlt nur Haende mit `haende.abgeschlossen = 1` (gesetzt in `abrechnen`);
+  abgebrochene Haende bleiben gespeichert, werden aber nicht gewertet.
+- Mindest-Erhoehung: Bet >= Big Blind, Raise um >= letzte volle Erhoehung, All-in
+  immer erlaubt; zu kleines All-in oeffnet nicht wieder (`haben_gehandelt`).
 - Karten-Eingabe: Rang (2-9, T/10, J/B, Q/D, K, A) + Farbe (s, h, d, c),
   z. B. "As Kh" (`lies_karten` in `poker/deck.py`).
 

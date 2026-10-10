@@ -190,6 +190,7 @@ def spiele_live_hand(db, namen, small_blind, big_blind, stacks):
             if befehl == "":
                 continue
             elif befehl in ["quit", "q", "exit"]:
+                print("   Hand abgebrochen, sie zaehlt nicht in der Statistik.")
                 return False, stacks
             elif befehl == "hilfe":
                 print(HILFE)
