@@ -38,7 +38,7 @@ Variante testen.
 
 ## Fahrplan
 1. Karten, Deck, Handbewertung (erledigt)
-2. Equity per Monte-Carlo (Referenz: AA vs KK preflop heads-up ca. 82 %)
+2. Equity per Monte-Carlo, Standard 10000 Durchlaeufe (erledigt; Referenz AA vs KK ca. 82 %)
 3. Spielerprofile & Statistiken (SQLite)
 4. Spiel-Simulation mit Bots (inkl. Zufalls-Bot)
 5. KI: Spielertypen erkennen, Gegenstrategie

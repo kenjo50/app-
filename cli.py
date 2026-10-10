@@ -9,6 +9,7 @@ import sys
 
 from poker.bewertung import bewerte_hand, finde_gewinner, handart_name
 from poker.deck import austeilen, erzeuge_deck
+from poker.equity import berechne_equity
 
 RANG_ZEICHEN = {11: "B", 12: "D", 13: "K", 14: "A"}
 FARB_ZEICHEN = {"Karo": "♦", "Herz": "♥", "Pik": "♠", "Kreuz": "♣"}
@@ -39,14 +40,24 @@ def spiele_eine_hand(namen):
         handkarten[name] = austeilen(deck, 2)
     board = austeilen(deck, 5)
 
+    # Equity vor dem Flop: Wer hatte die besten Chancen, bevor das Board kam?
+    alle_haende = []
+    for name in namen:
+        alle_haende.append(handkarten[name])
+    equity = berechne_equity(alle_haende)
+
     print("Board:", karten_als_text(board))
     print()
 
+    print(f"{'Spieler':<10} {'Hand':<8} {'Equity preflop':<16} Ergebnis")
     werte = []
-    for name in namen:
+    for i in range(len(namen)):
+        name = namen[i]
         wert = bewerte_hand(handkarten[name] + board)
         werte.append(wert)
-        print(f"{name:<10} {karten_als_text(handkarten[name])}   {handart_name(wert)}")
+        hand_text = karten_als_text(handkarten[name])
+        equity_text = f"{equity[i] * 100:.1f} %"
+        print(f"{name:<10} {hand_text:<8} {equity_text:<16} {handart_name(wert)}")
 
     print()
     gewinner = finde_gewinner(werte)
