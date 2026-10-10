@@ -38,6 +38,17 @@ und schlaegt sie einen Zufalls-Bot? Messung in bb/100 ueber viele Haende.
 - Karten-Eingabe: Rang (2-9, T/10, J/B, Q/D, K, A) + Farbe (s, h, d, c),
   z. B. "As Kh" (`lies_karten` in `poker/deck.py`).
 
+## Turnier-Timer, Clock, Kasse (Web-App)
+- Kern: `poker/turnier.py` (Blindstruktur, Timer, Vorlagen), `poker/clock.py`
+  (Clock Call), `poker/kasse.py` (Turnier-/Cash-Buy-ins, Bilanz).
+- Zeit immer als Parameter `jetzt`; Restzeit = `ende - jetzt` (nie herunterzaehlen).
+  `aktualisiere(..., jetzt)` liefert faellige Ansagen {"zeit", "text", "art"}.
+- Geld immer in Cent als ganze Zahl. Cash: Buy-in 10 Euro, Chips 10/25/50/100 ct.
+  Turnier: Chips 25/100/500/1000, Startstack 3000 (Blinds durch 25 teilbar).
+- Der Web-Server haelt Timer/Clock im Speicher und nummeriert Ansagen; die
+  Web-App in `web/` fragt alle 250 ms ab. Nur das Geraet mit "Dieses Geraet steuert"
+  zeigt Knoepfe und spricht (Web Speech API), Piepton per Web Audio API.
+
 ## Kartendarstellung (verbindlich)
 Karte = Tupel `(rang, farbe)`, `rang` 2..14 (11 Bube, 12 Dame, 13 Koenig, 14 Ass),
 `farbe` in `"Karo"`, `"Herz"`, `"Pik"`, `"Kreuz"`.
@@ -64,3 +75,4 @@ Variante testen.
 - Tests: `python -m pytest`
 - Demo: `python cli.py` oder `python cli.py 42` (fester Seed)
 - Live-Modus: `python cli.py live` (Datenbank `heimrunde.db`)
+- Web-App: `python server.py`, dann auf dem iPhone `http://<IP-des-PCs>:8000`

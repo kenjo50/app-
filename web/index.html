@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Heimrunde">
+  <meta name="theme-color" content="#0f1512">
+  <title>Poker-Heimrunde</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="icon" href="icon-180.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="nur-anzeige">
+
+<header>
+  <button id="aktivieren" class="haupt">🔊 Ton &amp; Bildschirm an</button>
+  <label class="schalter"><input type="checkbox" id="steuergeraet"> Dieses Gerät steuert</label>
+</header>
+<p id="hinweis" class="hinweis" hidden></p>
+
+<nav>
+  <button data-tab="timer" class="aktiv">Timer</button>
+  <button data-tab="clock">Clock</button>
+  <button data-tab="struktur">Blinds</button>
+  <button data-tab="turnier">Turnier</button>
+  <button data-tab="cash">Cash</button>
+  <button data-tab="bilanz">Bilanz</button>
+</nav>
+
+<!-- Clock-Banner: auf jedem Tab sichtbar, solange ein Clock läuft -->
+<div id="clock-banner" hidden>
+  <span>CLOCK</span> <strong id="clock-banner-zeit">30</strong>
+  <button class="steuerung" id="clock-banner-stopp">Stopp</button>
+</div>
+
+<main>
+  <!-- ============ Timer ============ -->
+  <section id="tab-timer">
+    <div id="timer-leer">
+      <p>Noch keine Blindstruktur geladen.</p>
+      <div class="zeile steuerung">
+        <select id="timer-vorlage"></select>
+        <button id="timer-vorlage-laden">Laden</button>
+      </div>
+    </div>
+    <div id="timer-anzeige" hidden>
+      <div id="level-titel">Level 1</div>
+      <div id="zeit" class="riesig">00:00</div>
+      <div id="blinds">25 / 50</div>
+      <div id="ante"></div>
+      <div class="info">
+        <div><span class="klein">Nächstes</span><br><span id="naechstes">–</span></div>
+        <div><span class="klein">Pause in</span><br><span id="pause-in">–</span></div>
+      </div>
+      <div class="steuerung knoepfe">
+        <button id="t-vorheriges">◀ Level</button>
+        <button id="t-start" class="haupt">Start</button>
+        <button id="t-naechstes">Level ▶</button>
+        <button id="t-minus">−1 Min</button>
+        <button id="t-plus">+1 Min</button>
+      </div>
+      <p class="klein" id="timer-vorlage-name"></p>
+      <div class="zeile steuerung">
+        <select id="timer-vorlage-2"></select>
+        <button id="timer-vorlage-laden-2">Andere Struktur laden</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ Clock ============ -->
+  <section id="tab-clock" hidden>
+    <div id="clock-zeit" class="riesig">30</div>
+    <div class="steuerung">
+      <div class="zeile mitte">
+        <button class="dauer" data-sekunden="30">30 s</button>
+        <button class="dauer" data-sekunden="45">45 s</button>
+        <button class="dauer" data-sekunden="60">60 s</button>
+        <input type="number" id="clock-sekunden" min="1" value="30" inputmode="numeric"> s
+      </div>
+      <button id="clock-start" class="haupt gross">Clock!</button>
+      <button id="clock-stopp" class="gross">Gehandelt – Stopp</button>
+    </div>
+    <p class="klein">Der Turnier-Timer läuft währenddessen weiter.</p>
+  </section>
+
+  <!-- ============ Blindstruktur ============ -->
+  <section id="tab-struktur" hidden>
+    <div class="zeile">
+      <select id="s-vorlage"></select>
+      <button id="s-laden">Bearbeiten</button>
+      <button id="s-loeschen">Löschen</button>
+    </div>
+    <table id="s-tabelle">
+      <thead><tr><th>#</th><th>SB</th><th>BB</th><th>Ante</th><th>Min</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="zeile">
+      <button id="s-plus-level">+ Level</button>
+      <button id="s-plus-pause">+ Pause</button>
+    </div>
+    <div class="zeile">
+      <input id="s-name" placeholder="Name der Vorlage">
+      <button id="s-speichern">Speichern</button>
+    </div>
+    <button id="s-verwenden" class="haupt steuerung">Im Timer verwenden</button>
+    <p class="klein">Unsere Chips: 25, 100, 500, 1000 – alle Beträge müssen durch 25 teilbar sein.
+      Startstack 3000.</p>
+  </section>
+
+  <!-- ============ Turnier-Kasse ============ -->
+  <section id="tab-turnier" hidden>
+    <div id="turnier-neu">
+      <h2>Neues Turnier</h2>
+      <label>Name <input id="tn-name" placeholder="z. B. Freitag"></label>
+      <label>Buy-in (€) <input id="tn-buyin" value="10" inputmode="decimal"></label>
+      <label>Rebuy (€) <input id="tn-rebuy" placeholder="wie Buy-in" inputmode="decimal"></label>
+      <label>Add-on (€) <input id="tn-addon" placeholder="wie Buy-in" inputmode="decimal"></label>
+      <label>Auszahlung (%) <input id="tn-auszahlung" value="60/30/10"></label>
+      <button id="tn-anlegen" class="haupt">Turnier anlegen</button>
+      <h2>Offene Turniere</h2>
+      <div id="turnier-offene"></div>
+    </div>
+    <div id="turnier-detail" hidden>
+      <div class="kacheln">
+        <div><span class="klein">Einträge</span><strong id="tu-eintraege">0</strong></div>
+        <div><span class="klein">Preisgeld</span><strong id="tu-preisgeld">0 €</strong></div>
+        <div><span class="klein">Im Spiel</span><strong id="tu-imspiel">0</strong></div>
+      </div>
+      <p class="klein" id="tu-preise"></p>
+      <table id="tu-auszahlung"><thead><tr><th>Platz</th><th>%</th><th>Betrag</th><th></th></tr></thead><tbody></tbody></table>
+      <div class="zeile">
+        <input id="tu-auszahlung-neu" placeholder="z. B. 50/30/20">
+        <button id="tu-auszahlung-aendern">Auszahlung ändern</button>
+      </div>
+      <h2>Spieler</h2>
+      <div class="zeile">
+        <input id="tu-name" list="spielerliste" placeholder="Name" autocomplete="off">
+        <button id="tu-buyin" class="haupt">Buy-in</button>
+      </div>
+      <table id="tu-spieler"><tbody></tbody></table>
+      <div class="zeile">
+        <button id="tu-abschliessen">Turnier abschließen</button>
+        <button id="tu-wechseln">Anderes Turnier</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ Cash Game ============ -->
+  <section id="tab-cash" hidden>
+    <div id="cash-neu">
+      <h2>Neues Cash Game</h2>
+      <label>Name <input id="cn-name" placeholder="z. B. Samstag"></label>
+      <button id="cn-anlegen" class="haupt">Cash Game anlegen</button>
+      <h2>Offene Cash Games</h2>
+      <div id="cash-offene"></div>
+    </div>
+    <div id="cash-detail" hidden>
+      <div class="zeile">
+        <input id="ca-name" list="spielerliste" placeholder="Name" autocomplete="off">
+        <input id="ca-betrag" value="10,00" inputmode="decimal" class="kurz"> €
+        <button id="ca-buyin" class="haupt">Buy-in</button>
+      </div>
+      <div id="ca-spieler"></div>
+      <div id="ca-kontrolle" class="kontrolle"></div>
+      <div class="zeile">
+        <button id="ca-abschliessen">Cash Game abschließen</button>
+        <button id="ca-wechseln">Anderes Cash Game</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ Bilanz ============ -->
+  <section id="tab-bilanz" hidden>
+    <div class="zeile">
+      <select id="b-art">
+        <option value="">Alle Abende</option>
+        <option value="turnier">Nur Turniere</option>
+        <option value="cash">Nur Cash Games</option>
+      </select>
+    </div>
+    <table id="b-tabelle">
+      <thead><tr><th>Spieler</th><th>Abende</th><th>Ein</th><th>Aus</th><th>Saldo</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <p class="klein">Nur abgeschlossene Abende zählen.</p>
+  </section>
+</main>
+
+<datalist id="spielerliste"></datalist>
+<div id="meldung" hidden></div>
+
+<script src="app.js"></script>
+</body>
+</html>

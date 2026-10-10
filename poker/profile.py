@@ -141,6 +141,14 @@ def spieler_id(verbindung, name):
     return cursor.lastrowid
 
 
+def spieler_namen(verbindung):
+    """Namen aller bekannten Spieler, alphabetisch."""
+    namen = []
+    for (name,) in verbindung.execute("SELECT name FROM spieler ORDER BY name"):
+        namen.append(name)
+    return namen
+
+
 def neue_hand(verbindung, namen, small_blind, big_blind, stacks=None, zeitpunkt=None):
     """Legt eine neue Hand an. `namen` in Sitzreihenfolge. Gibt die hand_id zurueck.
 
