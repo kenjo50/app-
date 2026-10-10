@@ -7,10 +7,12 @@ from poker.live import (
     abrechnen,
     beende_hand,
     berechne_pots,
+    darf_erhoehen,
     gewinner_ohne_showdown,
     ist_allin,
     finde_spieler,
     lies_aktion,
+    mindest_erhoehung,
     naechste_strasse,
     pot,
     rebuy,
@@ -500,6 +502,74 @@ def test_rebuy():
     assert rebuy(neue, "Clara", 200)["Clara"] == 200
     with pytest.raises(ValueError):
         rebuy(stacks, "Anna", 0)
+
+
+# ---------- Mindest-Erhoehung ----------
+
+
+def test_mindest_raise_preflop(db):
+    z = starte_hand(db, NAMEN, 1, 2, STACKS)
+    assert mindest_erhoehung(z) == 4          # Big Blind 2 + Erhoehung 2
+    with pytest.raises(ValueError):
+        verarbeite_aktion(db, z, "Clara", "raise", 3)
+    verarbeite_aktion(db, z, "Clara", "raise", 6)   # um 4 erhoeht
+    assert mindest_erhoehung(z) == 10
+    with pytest.raises(ValueError):
+        verarbeite_aktion(db, z, "Anna", "raise", 9)
+    verarbeite_aktion(db, z, "Anna", "raise", 10)
+
+
+def test_mindest_bet_nach_dem_flop(db):
+    z = starte_hand(db, NAMEN, 1, 2, STACKS)
+    verarbeite_aktion(db, z, "Clara", "call")
+    verarbeite_aktion(db, z, "Anna", "call")
+    verarbeite_aktion(db, z, "Ben", "check")
+    naechste_strasse(db, z, FLOP)
+    assert mindest_erhoehung(z) == 2          # ein Big Blind
+    with pytest.raises(ValueError):
+        verarbeite_aktion(db, z, "Anna", "raise", 1)
+    verarbeite_aktion(db, z, "Anna", "raise", 5)   # Bet 5
+    assert mindest_erhoehung(z) == 10              # Raise mindestens um 5
+    with pytest.raises(ValueError):
+        verarbeite_aktion(db, z, "Ben", "raise", 8)
+    verarbeite_aktion(db, z, "Ben", "raise", 10)
+
+
+def test_kleines_allin_ist_erlaubt(db):
+    # Clara erhoeht auf 20, Mindest-Raise waere auf 38. Anna hat nur 25:
+    # all-in auf 25 ist trotzdem erlaubt, auch mit Betrag statt "a".
+    z = starte_hand(db, NAMEN, 1, 2, {"Anna": 25, "Ben": 200, "Clara": 200})
+    verarbeite_aktion(db, z, "Clara", "raise", 20)
+    assert mindest_erhoehung(z) == 38
+    assert verarbeite_aktion(db, z, "Anna", "raise", 25) == ("raise", 25)
+
+
+def test_zu_kleines_allin_oeffnet_nicht_wieder(db):
+    # Clara erhoeht auf 20, Anna geht all-in auf 25 (nur um 5, keine volle Erhoehung).
+    # Ben darf noch erhoehen (er hat noch nicht gehandelt), Clara nur callen/folden.
+    z = starte_hand(db, NAMEN, 1, 2, {"Anna": 25, "Ben": 200, "Clara": 200})
+    verarbeite_aktion(db, z, "Clara", "raise", 20)
+    verarbeite_aktion(db, z, "Anna", "allin")
+    assert darf_erhoehen(z, "Ben")
+    verarbeite_aktion(db, z, "Ben", "call")
+    assert z["am_zug"] == "Clara"
+    assert not darf_erhoehen(z, "Clara")
+    with pytest.raises(ValueError):
+        verarbeite_aktion(db, z, "Clara", "raise", 60)
+    with pytest.raises(ValueError):
+        verarbeite_aktion(db, z, "Clara", "allin")
+    verarbeite_aktion(db, z, "Clara", "call")
+    assert z["am_zug"] is None
+
+
+def test_volle_erhoehung_oeffnet_wieder(db):
+    # Nach einer vollen Erhoehung darf jeder wieder erhoehen.
+    z = starte_hand(db, NAMEN, 1, 2, STACKS)
+    verarbeite_aktion(db, z, "Clara", "raise", 6)
+    verarbeite_aktion(db, z, "Anna", "call")
+    verarbeite_aktion(db, z, "Ben", "raise", 20)
+    assert darf_erhoehen(z, "Clara")
+    verarbeite_aktion(db, z, "Clara", "raise", 34)
 
 
 def test_rotiere():

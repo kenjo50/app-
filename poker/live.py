@@ -11,6 +11,14 @@ hat, ist all-in: Er bleibt in der Hand, muss aber nicht mehr handeln.
 Hat jemand weniger als den Call-Betrag, callt er mit dem Rest (all-in).
 Daraus entstehen Side Pots (siehe berechne_pots).
 
+Mindest-Erhoehung (No-Limit-Regeln):
+- Ein Bet muss mindestens einen Big Blind gross sein.
+- Ein Raise muss um mindestens so viel erhoehen wie die letzte volle Erhoehung
+  (Blinds 1/2, Raise auf 6 = um 4 -> naechster Raise mindestens auf 10).
+- Ausnahme: All-in geht immer, auch wenn es weniger ist.
+- Ein zu kleines All-in ist keine volle Erhoehung: Wer vorher schon gehandelt
+  hat, darf danach nur noch callen oder folden.
+
 Die App weiss auch, wer an der Reihe ist:
 - preflop beginnt der Spieler links vom Big Blind, der Big Blind spricht zuletzt
 - ab dem Flop beginnt der erste aktive Spieler ab dem Small Blind
@@ -73,6 +81,9 @@ def starte_hand(verbindung, namen, small_blind, big_blind, stacks):
         "einsaetze": {},             # Einsatz pro Spieler in dieser Setzrunde
         "investiert": {},            # Einsatz pro Spieler in der ganzen Hand
         "hoechster": 0,              # hoechster Einsatz in dieser Setzrunde
+        "big_blind": big_blind,
+        "letzte_erhoehung": big_blind,  # Groesse der letzten vollen Erhoehung
+        "haben_gehandelt": [],       # wer seit der letzten vollen Erhoehung gehandelt hat
         "noch_dran": [],             # wer in dieser Setzrunde noch handeln muss
         "am_zug": None,              # wer jetzt handeln muss (None = Runde vorbei)
         "beendet": False,            # Setzen vorbei
@@ -126,6 +137,18 @@ def _neue_setzrunde(zustand, ab_platz):
     if len(zustand["noch_dran"]) == 1 and zu_callen(zustand, zustand["noch_dran"][0]) == 0:
         zustand["noch_dran"] = []
     zustand["am_zug"] = naechster_am_zug(zustand, ab_platz)
+
+
+def mindest_erhoehung(zustand):
+    """Auf wie viel muss ein Bet/Raise mindestens gehen (ausser all-in)?"""
+    if zustand["hoechster"] == 0:
+        return zustand["big_blind"]
+    return zustand["hoechster"] + zustand["letzte_erhoehung"]
+
+
+def darf_erhoehen(zustand, name):
+    """False, wenn der Spieler nach einem zu kleinen All-in nur callen/folden darf."""
+    return name not in zustand["haben_gehandelt"]
 
 
 def pot(zustand):
@@ -265,6 +288,11 @@ def verarbeite_aktion(verbindung, zustand, name, grundaktion, betrag=None):
             )
         if betrag > maximal:
             raise ValueError(f"{name} hat nur {maximal:g} (all-in mit 'a')")
+        if not darf_erhoehen(zustand, name):
+            raise ValueError(f"Nach dem zu kleinen All-in darf {name} nur callen oder folden")
+        minimum = mindest_erhoehung(zustand)
+        if betrag < minimum and betrag < maximal:
+            raise ValueError(f"Mindestens auf {minimum:g} erhoehen (oder all-in mit 'a')")
         if zustand["hoechster"] == 0:
             aktion = "bet"
         else:
@@ -278,11 +306,25 @@ def verarbeite_aktion(verbindung, zustand, name, grundaktion, betrag=None):
     aktion_speichern(verbindung, zustand["hand_id"], name, zustand["strasse"],
                      aktion, gespeicherter_betrag)
 
+    volle_erhoehung = False
+    if aktion in ["bet", "raise"]:
+        erhoehung = neuer_einsatz - zustand["hoechster"]
+        # Ein Bet ab einem Big Blind bzw. ein Raise um mindestens die letzte
+        # Erhoehung ist "voll". Ein kleineres All-in zaehlt nicht als volle Erhoehung.
+        if zustand["hoechster"] == 0:
+            volle_erhoehung = neuer_einsatz >= zustand["big_blind"]
+        else:
+            volle_erhoehung = erhoehung >= zustand["letzte_erhoehung"]
+        if volle_erhoehung:
+            zustand["letzte_erhoehung"] = erhoehung
+            zustand["haben_gehandelt"] = []
+
     if aktion == "fold":
         zustand["aktiv"].remove(name)
     elif neuer_einsatz is not None:
         _setze(zustand, name, neuer_einsatz)
         zustand["hoechster"] = max(zustand["hoechster"], neuer_einsatz)
+    zustand["haben_gehandelt"].append(name)
 
     # Wer muss jetzt noch handeln?
     if aktion in ["bet", "raise"]:
@@ -333,6 +375,8 @@ def naechste_strasse(verbindung, zustand, neue_karten):
     for name in zustand["einsaetze"]:
         zustand["einsaetze"][name] = 0
     zustand["hoechster"] = 0
+    zustand["letzte_erhoehung"] = zustand["big_blind"]
+    zustand["haben_gehandelt"] = []
     zustand["strasse"] = neue_strasse
     # Ab dem Flop: erster aktiver Spieler ab dem Small Blind (Platz 0),
     # zu zweit beginnt der Big Blind (Platz 1).
