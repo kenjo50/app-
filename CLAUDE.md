@@ -25,6 +25,11 @@ und schlaegt sie einen Zufalls-Bot? Messung in bb/100 ueber viele Haende.
   nicht als Aktion. Karten werden als JSON-Text gespeichert.
 - Betraege = Gesamteinsatz des Spielers in der Setzrunde ("raise AUF 6").
   Die App rechnet Call-Betraege selbst aus (`poker/live.py`).
+- Am Ende jeder Hand: Showdown-Karten eingeben -> Gewinner per Handbewertung;
+  zeigt keiner, Gewinner direkt angeben. `teilnehmer.investiert/gewonnen`
+  ergeben bb/100. Neue Spalten in `NEUE_SPALTEN` eintragen (Nachruesten alter DBs).
+- Karten-Eingabe: Rang (2-9, T/10, J/B, Q/D, K, A) + Farbe (s, h, d, c),
+  z. B. "As Kh" (`lies_karten` in `poker/deck.py`).
 
 ## Kartendarstellung (verbindlich)
 Karte = Tupel `(rang, farbe)`, `rang` 2..14 (11 Bube, 12 Dame, 13 Koenig, 14 Ass),

@@ -119,3 +119,21 @@ def test_statistik_ohne_calls_hat_keinen_af(db):
 def test_unbekannter_spieler(db):
     with pytest.raises(ValueError):
         berechne_statistik(db, "Niemand")
+
+
+def test_alte_datenbank_bekommt_neue_spalten(tmp_path):
+    # Eine Datenbank im alten Format (ohne investiert/gewonnen) anlegen ...
+    import sqlite3
+    pfad = tmp_path / "alt.db"
+    alt = sqlite3.connect(pfad)
+    alt.execute("CREATE TABLE teilnehmer (hand_id INTEGER, spieler_id INTEGER, "
+                "sitzplatz INTEGER, handkarten TEXT)")
+    alt.commit()
+    alt.close()
+    # ... und mit der neuen Version oeffnen: die Spalten werden nachgeruestet.
+    verbindung = oeffne_datenbank(pfad)
+    spalten = []
+    for zeile in verbindung.execute("PRAGMA table_info(teilnehmer)"):
+        spalten.append(zeile[1])
+    verbindung.close()
+    assert "investiert" in spalten and "gewonnen" in spalten

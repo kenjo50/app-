@@ -10,15 +10,18 @@ import random
 import sys
 
 from poker.bewertung import bewerte_hand, finde_gewinner, handart_name
-from poker.deck import austeilen, erzeuge_deck
+from poker.deck import austeilen, erzeuge_deck, lies_karten
 from poker.equity import berechne_equity
 from poker.live import (
     NAECHSTE_STRASSE,
+    abrechnen,
     beende_hand,
+    finde_spieler,
     lies_aktion,
     naechste_strasse,
     pot,
     rotiere,
+    showdown_gewinner,
     starte_hand,
     verarbeite_aktion,
     zu_callen,
@@ -33,12 +36,14 @@ Eingaben waehrend einer Hand:
   anna c       call (oder check, wenn nichts offen ist)
   anna x       check
   anna f       fold
-  flop / turn / river   naechste Setzrunde
-  ende         Hand nach dem River beenden
+  flop Ks 9h 4d   naechste Setzrunde mit den neuen Board-Karten
+  turn 2c / river 7s   (ohne Karten fragt die App nach)
+  ende         Hand nach dem River beenden, danach kommt der Showdown
   stats        Statistiken aller Spieler
   hilfe        diese Hilfe
   quit         Programm beenden
 Namen duerfen abgekuerzt werden, solange sie eindeutig sind ("an" fuer Anna).
+Karten: Rang (2-9, T/10, J/B, Q/D, K, A) + Farbe (s Pik, h Herz, d Karo, c Kreuz).
 """
 
 RANG_ZEICHEN = {11: "B", 12: "D", 13: "K", 14: "A"}
@@ -116,16 +121,19 @@ def prozent_als_text(wert):
 
 
 def zeige_statistik(db, namen):
-    print(f"{'Spieler':<10} {'Haende':>6} {'VPIP':>6} {'PFR':>6} {'AF':>6}")
+    print(f"{'Spieler':<10} {'Haende':>6} {'VPIP':>6} {'PFR':>6} {'AF':>6} {'bb/100':>8}")
     for name in namen:
         st = berechne_statistik(db, name)
         af_text = "-" if st["af"] is None else f"{st['af']:.1f}"
+        bb_text = "-" if st["bb_pro_100"] is None else f"{st['bb_pro_100']:+.0f}"
         print(f"{name:<10} {st['haende']:>6} {prozent_als_text(st['vpip']):>6} "
-              f"{prozent_als_text(st['pfr']):>6} {af_text:>6}")
+              f"{prozent_als_text(st['pfr']):>6} {af_text:>6} {bb_text:>8}")
 
 
 def zeige_stand(zustand):
-    """Zeigt Pot und wer wie viel nachlegen muss."""
+    """Zeigt Board, Pot und wer wie viel nachlegen muss."""
+    if zustand["board"]:
+        print("   Board:", karten_als_text(zustand["board"]))
     offen = []
     for name in zustand["aktiv"]:
         betrag = zu_callen(zustand, name)
@@ -160,11 +168,15 @@ def spiele_live_hand(db, namen, small_blind, big_blind):
                 print(HILFE)
             elif befehl == "stats":
                 zeige_statistik(db, namen)
-            elif befehl in ["flop", "turn", "river"]:
-                if NAECHSTE_STRASSE.get(zustand["strasse"]) != befehl:
-                    print(f"   Nach {zustand['strasse']} kommt nicht {befehl}.")
+            elif befehl.split()[0] in ["flop", "turn", "river"]:
+                strasse = befehl.split()[0]
+                if NAECHSTE_STRASSE.get(zustand["strasse"]) != strasse:
+                    print(f"   Nach {zustand['strasse']} kommt nicht {strasse}.")
                     continue
-                naechste_strasse(zustand)
+                karten_text = befehl[len(strasse):].strip()
+                if karten_text == "":
+                    karten_text = input(f"   Karten fuer den {strasse}: ")
+                naechste_strasse(db, zustand, lies_karten(karten_text))
                 zeige_stand(zustand)
             elif befehl == "ende":
                 beende_hand(zustand)
@@ -180,11 +192,56 @@ def spiele_live_hand(db, namen, small_blind, big_blind):
             # Fehler aus dem Kern anzeigen, die Hand laeuft weiter.
             print(f"   Fehler: {fehler}")
 
-    if len(zustand["aktiv"]) == 1:
-        print(f"   {zustand['aktiv'][0]} gewinnt den Pot ({zahl_als_text(pot(zustand))}).")
-    else:
-        print(f"   Showdown zwischen {', '.join(zustand['aktiv'])}.")
+    try:
+        if len(zustand["aktiv"]) == 1:
+            gewinner = list(zustand["aktiv"])
+            gezeigte = {}
+        else:
+            gewinner, gezeigte = frage_showdown(zustand)
+    except EOFError:
+        return False
+
+    ergebnis = abrechnen(db, zustand, gewinner, gezeigte)
+    print(f"   Pot {zahl_als_text(pot(zustand))} geht an: {', '.join(gewinner)}")
+    for name in zustand["namen"]:
+        if ergebnis[name] != 0:
+            print(f"   {name:<10} {ergebnis[name]:+g}")
     return True
+
+
+def frage_showdown(zustand):
+    """Fragt die gezeigten Karten ab und ermittelt die Gewinner.
+
+    Gibt (gewinner, gezeigte) zurueck.
+    """
+    print(f"   Showdown zwischen {', '.join(zustand['aktiv'])}.")
+    print("   Karten eingeben, leer lassen = Karten nicht gezeigt.")
+    while True:
+        gezeigte = {}
+        try:
+            for name in zustand["aktiv"]:
+                text = input(f"   Karten von {name}: ").strip()
+                if text != "":
+                    gezeigte[name] = lies_karten(text)
+
+            if len(gezeigte) > 0:
+                gewinner = showdown_gewinner(zustand, gezeigte)
+                for name, karten in gezeigte.items():
+                    wert = bewerte_hand(karten + zustand["board"])
+                    print(f"   {name:<10} {karten_als_text(karten)}   {handart_name(wert)}")
+                return gewinner, gezeigte
+
+            # Notloesung: keiner zeigt, Gewinner direkt eingeben.
+            text = input("   Keiner zeigt. Wer gewinnt? (Namen mit Komma): ")
+            gewinner = []
+            for teil in text.split(","):
+                if teil.strip() != "":
+                    gewinner.append(finde_spieler(teil.strip(), zustand["aktiv"]))
+            if len(gewinner) == 0:
+                raise ValueError("Bitte mindestens einen Namen eingeben")
+            return gewinner, gezeigte
+        except ValueError as fehler:
+            print(f"   Fehler: {fehler} -- bitte nochmal.")
 
 
 def frage_blinds():
