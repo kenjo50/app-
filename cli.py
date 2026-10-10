@@ -4,6 +4,8 @@ Start:  python cli.py                 Demo: zufaellige Hand austeilen und bewert
         python cli.py 42              Demo mit Seed 42 (immer gleiches Ergebnis)
         python cli.py live            Live-Modus: Aktionen am Tisch mitschreiben
         python cli.py live test.db    Live-Modus mit anderer Datenbank-Datei
+        python cli.py sim 1000 zufall,equity,equity 42
+                                      Simulation: 1000 Haende, Bots, Seed (optional)
 """
 
 import random
@@ -33,6 +35,8 @@ from poker.live import (
     zu_callen,
 )
 from poker.profile import berechne_statistik, oeffne_datenbank
+from poker.simulation import STANDARD_DATENBANK as SIMULATIONS_DATENBANK
+from poker.simulation import oeffne_simulationsdatenbank, simuliere
 
 RANG_ZEICHEN = {11: "B", 12: "D", 13: "K", 14: "A"}
 FARB_ZEICHEN = {"Karo": "♦", "Herz": "♥", "Pik": "♠", "Kreuz": "♣"}
@@ -379,8 +383,47 @@ def live_modus(pfad):
         db.close()
 
 
+# ---------------- Simulation ----------------
+
+
+def zeige_fortschritt(fertig, gesamt):
+    """Zeigt alle 10 % an, wie weit die Simulation ist."""
+    schritt = max(1, gesamt // 10)
+    if fertig % schritt == 0 or fertig == gesamt:
+        print(f"   {fertig} / {gesamt} Haende", flush=True)
+
+
+def simulations_modus(argumente):
+    """python cli.py sim [haende] [bots] [seed]"""
+    anzahl = int(argumente[0]) if len(argumente) > 0 else 1000
+    typen = argumente[1].split(",") if len(argumente) > 1 else ["zufall", "equity"]
+    seed = int(argumente[2]) if len(argumente) > 2 else None
+    print(f"Simulation: {anzahl} Haende, Bots: {', '.join(typen)}, "
+          f"Datenbank: {SIMULATIONS_DATENBANK}")
+    db = oeffne_simulationsdatenbank(SIMULATIONS_DATENBANK)
+    try:
+        auswertung = simuliere(db, typen, anzahl, seed=seed, fortschritt=zeige_fortschritt)
+    except ValueError as fehler:
+        print(f"Fehler: {fehler}")
+        return
+    finally:
+        db.close()
+
+    print()
+    print(f"{'Bot':<10} {'Haende':>7} {'bb/100':>9} {'+-95 %':>8} {'gesamt BB':>10}")
+    for name, w in sorted(auswertung.items(), key=lambda e: e[1]["bb_pro_100"], reverse=True):
+        fehler = "-" if w["fehler_95"] is None else f"{w['fehler_95']:.0f}"
+        print(f"{name:<10} {w['haende']:>7} {w['bb_pro_100']:>+9.1f} {fehler:>8} "
+              f"{w['gesamt_bb']:>+10.1f}")
+    print()
+    print("+-95 %: Der wahre Wert liegt mit 95 % Wahrscheinlichkeit in diesem Bereich.")
+    print("Ueberlappen sich die Bereiche zweier Bots, ist der Unterschied noch nicht sicher.")
+
+
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == "live":
+    if len(sys.argv) > 1 and sys.argv[1] == "sim":
+        simulations_modus(sys.argv[2:])
+    elif len(sys.argv) > 1 and sys.argv[1] == "live":
         if len(sys.argv) > 2:
             live_modus(sys.argv[2])
         else:

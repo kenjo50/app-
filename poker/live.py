@@ -346,6 +346,25 @@ def verarbeite_aktion(verbindung, zustand, name, grundaktion, betrag=None):
     return aktion, gespeicherter_betrag
 
 
+def erlaubte_aktionen(zustand, name):
+    """Welche Grundaktionen darf der Spieler jetzt waehlen?
+
+    Ergebnis z. B. ["fold", "call", "raise"] oder ["check", "raise"].
+    "raise" steht nur drin, wenn er mehr Chips hat als zum Callen noetig
+    und nach einem zu kleinen All-in noch erhoehen darf. (Der Betrag eines
+    Raise wird erst bei verarbeite_aktion geprueft.)
+    """
+    erlaubt = []
+    if zu_callen(zustand, name) > 0:
+        erlaubt = ["fold", "call"]
+    else:
+        erlaubt = ["check"]
+    maximal = zustand["einsaetze"][name] + zustand["stacks"][name]
+    if darf_erhoehen(zustand, name) and maximal > zustand["hoechster"]:
+        erlaubt.append("raise")
+    return erlaubt
+
+
 def setzrunde_abgeschlossen(zustand):
     """True, wenn in dieser Setzrunde keiner mehr handeln muss."""
     return len(zustand["noch_dran"]) == 0

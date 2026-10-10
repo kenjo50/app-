@@ -53,6 +53,16 @@ und schlaegt sie einen Zufalls-Bot? Messung in bb/100 ueber viele Haende.
   Web-App in `web/` fragt alle 250 ms ab. Nur das Geraet mit "Dieses Geraet steuert"
   zeigt Knoepfe und spricht (Web Speech API), Piepton per Web Audio API.
 
+## Simulation und Bots
+- Bot = Funktion `bot(sicht, zufall) -> (grundaktion, betrag)`; die Sicht
+  (`erstelle_sicht` in `poker/bots.py`) enthaelt nur, was ein Spieler sehen darf.
+- `poker/simulation.py` spielt mit den Regeln aus `live.py`, speichert in
+  `simulation.db` (inkl. aller Handkarten), Stacks jede Hand 100 BB.
+- Zufalls-Bot: gleichverteilt ueber `erlaubte_aktionen`, Raise halber Pot/Pot/All-in.
+  Equity-Bot: nur Equity gegen zufaellige Gegnerhaende, keine Profile.
+- `bewerte_hand` ist die schnelle Version; `bewerte_hand_einfach` bleibt als
+  Referenz und wird in den Tests an Zufallshaenden verglichen.
+
 ## Kartendarstellung (verbindlich)
 Karte = Tupel `(rang, farbe)`, `rang` 2..14 (11 Bube, 12 Dame, 13 Koenig, 14 Ass),
 `farbe` in `"Karo"`, `"Herz"`, `"Pik"`, `"Kreuz"`.
@@ -71,7 +81,7 @@ Variante testen.
 1. Karten, Deck, Handbewertung (erledigt)
 2. Equity per Monte-Carlo, Standard 10000 Durchlaeufe (erledigt; Referenz AA vs KK ca. 82 %)
 3. Spielerprofile & Statistiken (SQLite) + Live-Eingabe (`poker/live.py`) fertig
-4. Spiel-Simulation mit Bots (inkl. Zufalls-Bot)
+4. Spiel-Simulation mit Bots (erledigt: Zufalls-Bot, Equity-Bot, `simulation.db`)
 5. KI: Spielertypen erkennen, Gegenstrategie
 6. Oberflaeche: erst CLI, spaeter Web-App
 
@@ -79,4 +89,5 @@ Variante testen.
 - Tests: `python -m pytest`
 - Demo: `python cli.py` oder `python cli.py 42` (fester Seed)
 - Live-Modus: `python cli.py live` (Datenbank `heimrunde.db`)
+- Simulation: `python cli.py sim 1000 zufall,equity,equity 42` (Haende, Bots, Seed)
 - Web-App: `python server.py`, dann auf dem iPhone `http://<IP-des-PCs>:8000`

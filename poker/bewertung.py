@@ -95,11 +95,12 @@ def bewerte_fuenf(karten):
         return (HOECHSTE_KARTE, *raenge_nach_gruppe)
 
 
-def bewerte_hand(karten):
+def bewerte_hand_einfach(karten):
     """Bewertet 5 bis 7 Karten: die beste Fuenfer-Kombination zaehlt.
 
-    Bei 7 Karten sind das 21 Kombinationen. Einfach und sicher;
-    optimiert wird erst, wenn es spaeter zu langsam ist.
+    Bei 7 Karten sind das 21 Kombinationen. Einfach und sicher, aber langsam.
+    Diese Version bleibt als Referenz: Die schnelle Version wird in den Tests
+    an vielen Zufallshaenden gegen sie geprueft.
     """
     if len(karten) < 5 or len(karten) > 7:
         raise ValueError("bewerte_hand braucht 5 bis 7 Karten")
@@ -109,6 +110,93 @@ def bewerte_hand(karten):
         if bester_wert is None or wert > bester_wert:
             bester_wert = wert
     return bester_wert
+
+
+def _hoechste_strasse(raenge):
+    """Hoechste Karte der besten Strasse in einer Menge von Raengen, sonst None."""
+    for hoch in range(14, 5, -1):
+        if (hoch in raenge and hoch - 1 in raenge and hoch - 2 in raenge
+                and hoch - 3 in raenge and hoch - 4 in raenge):
+            return hoch
+    if 14 in raenge and 2 in raenge and 3 in raenge and 4 in raenge and 5 in raenge:
+        return 5  # A-2-3-4-5, das Ass zaehlt unten
+    return None
+
+
+def bewerte_hand(karten):
+    """Bewertet 5 bis 7 Karten direkt, ohne alle Fuenfer-Kombinationen zu probieren.
+
+    Liefert genau dasselbe Tupel wie bewerte_hand_einfach, ist aber etwa
+    zehnmal schneller. Das braucht die Simulation mit vielen tausend Haenden.
+    Vorgehen: Raenge und Farben zaehlen, dann von der besten Handart
+    abwaerts pruefen.
+    """
+    if len(karten) < 5 or len(karten) > 7:
+        raise ValueError("bewerte_hand braucht 5 bis 7 Karten")
+
+    # Raenge pro Farbe und Anzahl pro Rang sammeln
+    pro_farbe = {}
+    anzahl = {}
+    for rang, farbe in karten:
+        if farbe not in pro_farbe:
+            pro_farbe[farbe] = []
+        pro_farbe[farbe].append(rang)
+        anzahl[rang] = anzahl.get(rang, 0) + 1
+
+    # Flush und Straight Flush (bei 7 Karten kann es nur eine Flush-Farbe geben)
+    flush_raenge = None
+    for raenge in pro_farbe.values():
+        if len(raenge) >= 5:
+            flush_raenge = sorted(raenge, reverse=True)
+    if flush_raenge is not None:
+        hoch = _hoechste_strasse(set(flush_raenge))
+        if hoch is not None:
+            return (STRAIGHT_FLUSH, hoch)
+
+    # Raenge nach Anzahl gruppieren, jeweils absteigend
+    vierlinge = []
+    drillinge = []
+    paare = []
+    einzelne = []
+    for rang in sorted(anzahl, reverse=True):
+        if anzahl[rang] == 4:
+            vierlinge.append(rang)
+        elif anzahl[rang] == 3:
+            drillinge.append(rang)
+        elif anzahl[rang] == 2:
+            paare.append(rang)
+        else:
+            einzelne.append(rang)
+
+    if vierlinge:
+        rest = [r for r in anzahl if r != vierlinge[0]]
+        return (VIERLING, vierlinge[0], max(rest))
+
+    if drillinge and (len(drillinge) >= 2 or paare):
+        # Zweiter Drilling oder bestes Paar fuellt das Full House auf
+        kandidaten = drillinge[1:] + paare
+        return (FULL_HOUSE, drillinge[0], max(kandidaten))
+
+    if flush_raenge is not None:
+        return (FLUSH, *flush_raenge[:5])
+
+    hoch = _hoechste_strasse(set(anzahl))
+    if hoch is not None:
+        return (STRASSE, hoch)
+
+    if drillinge:
+        kicker = sorted(paare + einzelne, reverse=True)[:2]
+        return (DRILLING, drillinge[0], *kicker)
+
+    if len(paare) >= 2:
+        # Drittes Paar kann Kicker sein
+        kicker = max(paare[2:] + einzelne)
+        return (ZWEI_PAARE, paare[0], paare[1], kicker)
+
+    if paare:
+        return (PAAR, paare[0], *einzelne[:3])
+
+    return (HOECHSTE_KARTE, *einzelne[:5])
 
 
 def handart_name(wert):

@@ -66,3 +66,42 @@ def berechne_equity(haende, board=None, durchlaeufe=STANDARD_DURCHLAEUFE):
     for p in punkte:
         equity.append(p / durchlaeufe)
     return equity
+
+
+def equity_gegen_zufall(hand, board, anzahl_gegner, durchlaeufe=1000, zufall=random):
+    """Equity einer Hand gegen Gegner, deren Karten man NICHT kennt.
+
+    So sieht es ein Spieler am Tisch: eigene Karten und Board sind bekannt,
+    die Gegner bekommen in jedem Durchlauf zufaellige Karten.
+    zufall: Zufallsquelle (Standard: das random-Modul; fuer reproduzierbare
+            Simulationen kann ein eigenes random.Random(seed) uebergeben werden).
+    Rueckgabe: Zahl zwischen 0 und 1 (Split Pot zaehlt anteilig).
+    """
+    if anzahl_gegner < 1:
+        raise ValueError("Es braucht mindestens einen Gegner")
+    bekannte_karten = list(hand) + list(board)
+    if len(set(bekannte_karten)) != len(bekannte_karten):
+        raise ValueError("Eine Karte ist doppelt vergeben")
+
+    restdeck = []
+    for karte in erzeuge_deck():
+        if karte not in bekannte_karten:
+            restdeck.append(karte)
+
+    fehlende = 5 - len(board)
+    punkte = 0.0
+    for i in range(durchlaeufe):
+        deck = list(restdeck)
+        zufall.shuffle(deck)
+        gegner = []
+        for g in range(anzahl_gegner):
+            gegner.append(austeilen(deck, 2))
+        komplettes_board = list(board) + austeilen(deck, fehlende)
+
+        werte = [bewerte_hand(list(hand) + komplettes_board)]
+        for gegner_hand in gegner:
+            werte.append(bewerte_hand(gegner_hand + komplettes_board))
+        gewinner = finde_gewinner(werte)
+        if 0 in gewinner:
+            punkte = punkte + 1 / len(gewinner)
+    return punkte / durchlaeufe

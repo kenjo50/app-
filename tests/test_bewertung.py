@@ -209,3 +209,38 @@ def test_split_pot_gleiche_kicker_mit_verschiedenen_farben():
 
 def test_handart_name():
     assert handart_name((FULL_HOUSE, 13, 4)) == "Full House"
+
+
+# ---------- Schnelle Bewertung gegen die einfache pruefen ----------
+
+
+def test_schnell_gleich_einfach_zufallshaende():
+    """Die schnelle Bewertung muss bei vielen Zufallshaenden dasselbe liefern."""
+    import random
+
+    from poker.bewertung import bewerte_hand_einfach
+    from poker.deck import erzeuge_deck
+
+    zufall = random.Random(2026)
+    for anzahl_karten in [5, 6, 7]:
+        for i in range(10000):
+            karten = zufall.sample(erzeuge_deck(), anzahl_karten)
+            assert bewerte_hand(karten) == bewerte_hand_einfach(karten), karten
+
+
+def test_schnell_gleich_einfach_seltene_haende():
+    """Seltene Handarten gezielt: Zufallshaende enthalten sie kaum."""
+    from poker.bewertung import bewerte_hand_einfach
+
+    faelle = [
+        [(14, "Pik"), (13, "Pik"), (12, "Pik"), (11, "Pik"), (10, "Pik"), (9, "Pik"), (2, "Herz")],
+        [(14, "Herz"), (2, "Herz"), (3, "Herz"), (4, "Herz"), (5, "Herz"), (6, "Pik"), (7, "Pik")],
+        [(9, "Pik"), (9, "Herz"), (9, "Karo"), (9, "Kreuz"), (8, "Pik"), (8, "Herz"), (8, "Karo")],
+        [(5, "Pik"), (5, "Herz"), (5, "Karo"), (3, "Kreuz"), (3, "Pik"), (3, "Herz"), (2, "Karo")],
+        [(5, "Pik"), (5, "Herz"), (5, "Karo"), (3, "Kreuz"), (3, "Pik"), (14, "Herz"), (14, "Karo")],
+        [(2, "Kreuz"), (4, "Kreuz"), (6, "Kreuz"), (8, "Kreuz"), (10, "Kreuz"),
+         (3, "Kreuz"), (5, "Kreuz")],   # 7 Kreuz mit Straight Flush 2-6
+        [(13, "Pik"), (13, "Herz"), (8, "Karo"), (8, "Kreuz"), (3, "Pik"), (3, "Herz"), (2, "Karo")],
+    ]
+    for karten in faelle:
+        assert bewerte_hand(karten) == bewerte_hand_einfach(karten), karten
