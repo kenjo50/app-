@@ -172,3 +172,15 @@ body.nur-anzeige .steuerung { display: none !important; }
 @media (min-width: 700px) {
   .riesig { font-size: 200px; }
 }
+
+/* Text-Banner fuer Ansagen (auch sichtbar, wenn kein Ton kommt) */
+#ansage {
+  position: fixed; left: 16px; right: 16px; top: calc(env(safe-area-inset-top) + 12px);
+  background: var(--gelb); color: #1d1600; font-weight: 600;
+  padding: 12px 14px; border-radius: 12px; text-align: center; z-index: 20;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+/* Knopf wartet auf das zweite Tippen zur Bestaetigung */
+button.bestaetigen { background: var(--warnung) !important; border-color: var(--warnung) !important;
+                     color: #fff !important; }
