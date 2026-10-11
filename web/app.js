@@ -87,6 +87,8 @@ function deutscheStimme() {
 
 function sprich(text) {
   if (!window.speechSynthesis || !text) return;
+  // iOS haelt die Sprachausgabe manchmal still an -> wieder aufwecken
+  if (speechSynthesis.paused) speechSynthesis.resume();
   const u = new SpeechSynthesisUtterance(text);
   u.lang = "de-DE";
   const stimme = deutscheStimme();
@@ -97,6 +99,8 @@ function sprich(text) {
 
 function piep() {
   if (!audio) return;
+  // Nach Sperre/Hintergrund ist der AudioContext oft "suspended"
+  if (audio.state !== "running") audio.resume();
   // Ein deutlicher, eine Sekunde langer Ton
   const osc = audio.createOscillator();
   const lautstaerke = audio.createGain();
@@ -133,11 +137,14 @@ function zeigeHinweis(text) {
 }
 
 // iOS: Ton und Sprache gehen erst nach einer Beruehrung. Darum dieser Knopf.
-$("aktivieren").addEventListener("click", async () => {
+// WICHTIG: Alles, was Ton freischaltet, muss SOFORT im Klick passieren -
+// ohne "await" davor. Nach einem await zaehlt es fuer iOS nicht mehr als
+// Beruehrung, und die Sprachausgabe bleibt fuer immer stumm.
+function tonFreischalten() {
   const AudioCtx = window.AudioContext || window.webkitAudioContext;
   if (AudioCtx && !audio) audio = new AudioCtx();
   if (audio) {
-    await audio.resume();
+    audio.resume();  // bewusst ohne await
     // kurzer, stiller Ton schaltet die Ausgabe auf iOS frei
     const puffer = audio.createBuffer(1, 1, 22050);
     const quelle = audio.createBufferSource();
@@ -145,12 +152,34 @@ $("aktivieren").addEventListener("click", async () => {
     quelle.connect(audio.destination);
     quelle.start(0);
   }
-  sprich("Ton ist an.");
   tonAktiv = true;
   $("aktivieren").textContent = "🔊 Ton ist an";
   $("aktivieren").classList.remove("haupt");
-  await bildschirmWachHalten();
+}
+
+$("aktivieren").addEventListener("click", () => {
+  tonFreischalten();
+  sprich("Ton ist an.");
+  bildschirmWachHalten();  // darf danach kommen, braucht keine Beruehrung
 });
+
+$("ton-testen").addEventListener("click", () => {
+  tonFreischalten();
+  sprich("Test. Eins, zwei, drei.");
+  setTimeout(piep, 1800);
+  zeigeAnsage("Test: Du solltest „Test, eins, zwei, drei“ und einen Piepton hören.");
+});
+
+// Jede Ansage zusaetzlich als Text anzeigen - so sieht man, ob sie ankam,
+// auch wenn kein Ton zu hoeren ist.
+let ansageTimer = null;
+function zeigeAnsage(text) {
+  const el = $("ansage");
+  el.textContent = "📢 " + text;
+  el.hidden = false;
+  clearTimeout(ansageTimer);
+  ansageTimer = setTimeout(() => (el.hidden = true), 4000);
+}
 
 // Wake Lock geht verloren, wenn die Seite im Hintergrund war -> neu anfordern
 document.addEventListener("visibilitychange", () => {
@@ -208,7 +237,12 @@ function serverJetzt() {
   return Date.now() / 1000 + versatz;
 }
 
+let abfrageLaeuft = false;
+
 async function holeStatus() {
+  // Laeuft noch eine Abfrage, nicht noch eine starten (sonst kaemen Ansagen doppelt)
+  if (abfrageLaeuft) return;
+  abfrageLaeuft = true;
   try {
     const antwort = await fetch("/api/status?nach_id=" + (letzteId ?? 0));
     const daten = await antwort.json();
@@ -227,15 +261,20 @@ async function holeStatus() {
     if (strukturNeu) zeigeTimerKopf();
   } catch (e) {
     // Server kurz nicht erreichbar: beim naechsten Mal wieder versuchen
+  } finally {
+    abfrageLaeuft = false;
   }
 }
 
 function spieleAnsage(ansage, jetzt) {
-  // Nur das steuernde Geraet spricht, und nur wenn der Ton freigeschaltet ist.
-  if (!tonAktiv || !istSteuergeraet()) return;
   // Ansagen, die laenger als 5 Sekunden her sind (z. B. Handy war im
   // Hintergrund), werden nicht mehr vorgelesen.
   if (jetzt - ansage.zeit > 5) return;
+  const text = ansage.art === "piep" ? "PIEP – Zeit ist um!" : ansage.text;
+  // Text immer anzeigen; sprechen nur, wenn auf diesem Geraet der Ton an ist.
+  // (Jedes Geraet mit "Ton an" spricht - am besten nur eines einschalten.)
+  zeigeAnsage(tonAktiv ? text : text + "  (Ton aus – oben auf 🔊 tippen)");
+  if (!tonAktiv) return;
   if (ansage.art === "piep") piep();
   else sprich(ansage.text);
 }
