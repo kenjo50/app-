@@ -184,3 +184,67 @@ body.nur-anzeige .steuerung { display: none !important; }
 /* Knopf wartet auf das zweite Tippen zur Bestaetigung */
 button.bestaetigen { background: var(--warnung) !important; border-color: var(--warnung) !important;
                      color: #fff !important; }
+
+/* ================= Live-Modus (Reiter "Hand") ================= */
+.chips-auswahl { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.startzeile .platz { color: var(--leise); width: 1.6em; }
+.startzeile strong { flex: 1; }
+
+.spielerleiste { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 6px; }
+.spielerchip { display: flex; flex-direction: column; align-items: flex-start; padding: 8px 10px;
+               text-align: left; line-height: 1.25; }
+.spielerchip span { font-variant-numeric: tabular-nums; }
+.spielerchip small { color: var(--leise); min-height: 1.2em; }
+.spielerchip.dran { border: 2px solid var(--akzent); background: #173524; }
+.spielerchip.gefoldet, .spielerchip.aus { opacity: 0.4; }
+
+.live-info { margin: 12px 0 6px; font-size: 1.05rem; }
+.board { display: flex; gap: 6px; min-height: 0; margin: 6px 0; }
+
+.karte { display: inline-block; background: #f4f4f0; color: #111; border-radius: 6px;
+         padding: 6px 8px; font-weight: 700; font-size: 1.3rem; min-width: 2.4em; text-align: center; }
+.karte.rot { color: #d0202a; }
+.karte.klein-karte { font-size: 1rem; padding: 3px 5px; min-width: 2em; margin-right: 3px; }
+
+.kartenraster { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin: 8px 0; }
+/* Nach jeder Farbe etwas Abstand (7 + 6 Karten pro Farbe) */
+.kartenraster .farbende { grid-column: 1 / -1; height: 2px; }
+.rasterkarte { min-height: 46px; padding: 2px 0; font-size: 1.05rem; font-weight: 700;
+               background: #f4f4f0; color: #111; border-radius: 6px; }
+.rasterkarte.rot { color: #d0202a; }
+.rasterkarte.gewaehlt { background: var(--akzent); color: #06210f; }
+.rasterkarte:disabled { opacity: 0.18; }
+
+/* Feste Leiste unten: einhaendig mit dem Daumen erreichbar */
+.aktionsleiste { position: fixed; left: 0; right: 0; bottom: 0; z-index: 8;
+                 display: flex; gap: 6px; padding: 8px 12px calc(env(safe-area-inset-bottom) + 8px);
+                 background: rgba(15, 21, 18, 0.96); border-top: 1px solid var(--rand); }
+.aktionsleiste .aktion { flex: 1; min-height: 64px; font-size: 1.15rem; font-weight: 600; line-height: 1.1; }
+.aktionsleiste .aktion small { font-weight: 400; font-size: 0.8rem; }
+.aktionsleiste .zurueck { flex: 0 0 56px; font-size: 1.6rem; }
+.aktionsleiste .fold { border-color: var(--warnung); color: var(--warnung); }
+.aktionsleiste .allin { background: #3a1513; border-color: var(--warnung); }
+.aktionsleiste .offen { border-color: var(--akzent); }
+.aktionsleiste .breit { flex: 3; }
+body:has(#lt-aktionen:not([hidden])) main { padding-bottom: 110px; }
+
+.raise-feld { background: var(--flaeche); border-radius: 12px; padding: 10px; margin: 8px 0; }
+.schnellwahl-reihe { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.schnellwahl { min-height: 64px; line-height: 1.2; }
+
+.showdown-zeile { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+                  padding: 8px 0; border-bottom: 1px solid var(--rand); }
+.showdown-zeile strong { min-width: 5em; }
+.showdown-zeile span { flex: 1; }
+.showdown-zeile.ziel { background: #173524; border-radius: 8px; padding: 8px; }
+.karte-gross { font-size: 1.4rem; text-align: center; padding: 20px 0; }
+.abbrechen-knopf { margin-top: 18px; }
+.verlauf { margin-top: 12px; }
+
+/* Statistik-Blatt */
+.blatt { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); z-index: 30;
+         display: flex; align-items: flex-end; }
+.blatt-inhalt { background: var(--hintergrund); width: 100%; max-width: 900px; margin: 0 auto;
+                border-radius: 16px 16px 0 0; padding: 16px 16px calc(env(safe-area-inset-bottom) + 16px);
+                border-top: 1px solid var(--rand); }
+.blatt .kacheln { grid-template-columns: repeat(3, 1fr); }

@@ -25,6 +25,7 @@
 <div id="ansage" hidden></div>
 
 <nav>
+  <button data-tab="hand">Hand</button>
   <button data-tab="timer" class="aktiv">Timer</button>
   <button data-tab="clock">Clock</button>
   <button data-tab="struktur">Blinds</button>
@@ -40,6 +41,38 @@
 </div>
 
 <main>
+  <!-- ============ Hand (Live-Modus: Haende mitschreiben) ============ -->
+  <section id="tab-hand" hidden>
+    <!-- Abend einrichten -->
+    <div id="live-start" hidden>
+      <h2>Abend starten</h2>
+      <p class="klein">Spieler antippen (Reihenfolge = Sitzordnung, der Erste ist der erste Small Blind).</p>
+      <div id="ls-bekannte" class="chips-auswahl"></div>
+      <div class="zeile">
+        <input id="ls-neu" placeholder="Neuer Spieler" autocomplete="off">
+        <button id="ls-neu-knopf">+</button>
+      </div>
+      <div id="ls-reihenfolge"></div>
+      <div class="zeile">
+        <label>Small Blind € <input id="ls-sb" value="0,10" inputmode="decimal" class="kurz"></label>
+        <label>Big Blind € <input id="ls-bb" value="0,20" inputmode="decimal" class="kurz"></label>
+        <label>Stack € <input id="ls-stack" value="10" inputmode="decimal" class="kurz"></label>
+      </div>
+      <button id="ls-starten" class="haupt gross">Abend starten</button>
+    </div>
+
+    <!-- Laufender Abend -->
+    <div id="live-tisch" hidden>
+      <div id="lt-spieler" class="spielerleiste"></div>
+      <div id="lt-info" class="live-info"></div>
+      <div id="lt-board" class="board"></div>
+      <div id="lt-inhalt"></div>
+      <div id="lt-verlauf" class="klein verlauf"></div>
+    </div>
+    <!-- Feste Leiste unten: grosse Knoepfe fuer die Aktionen -->
+    <div id="lt-aktionen" class="aktionsleiste" hidden></div>
+  </section>
+
   <!-- ============ Timer ============ -->
   <section id="tab-timer">
     <div id="timer-leer">
@@ -195,6 +228,11 @@
 <datalist id="spielerliste"></datalist>
 <div id="meldung" hidden></div>
 
+<!-- Statistik eines Spielers (ueber allem) -->
+<div id="statistik-blatt" class="blatt" hidden></div>
+
+<!-- app.js zuerst: live.js benutzt dessen Hilfsfunktionen ($, api, euro, ...) -->
 <script src="app.js"></script>
+<script src="live.js"></script>
 </body>
 </html>
