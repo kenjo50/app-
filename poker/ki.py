@@ -183,19 +183,55 @@ def erstelle_ki_bot(verbindung, ab_hand_id=0):
     return bot
 
 
+TYP_NAMEN = {"felsen": "Felsen", "station": "Calling Station", "maniac": "Maniac",
+             "tag": "TAG", "unbekannt": "unbekannt"}
+
+
 def ki_entscheidung(sicht, erkennungen, zufall):
-    """Die eigentliche Entscheidung. erkennungen: eine Typ-Erkennung pro aktivem Gegner."""
+    """Die eigentliche Entscheidung. erkennungen: eine Typ-Erkennung pro aktivem Gegner.
+
+    Gibt (aktion, betrag) zurueck - die Begruendung liefert ki_bewertung.
+    """
+    bewertung = ki_bewertung(sicht, erkennungen, zufall)
+    return bewertung["aktion"], bewertung["betrag"]
+
+
+def ki_bewertung(sicht, erkennungen, zufall, durchlaeufe=KI_DURCHLAEUFE):
+    """Entscheidung der KI mit allen Zwischenwerten und einer Begruendung in Worten.
+
+    Rueckgabe: {"aktion", "betrag", "equity", "fair", "pot_odds",
+                "gegner": [{"name", "typ", "sicherheit", "bereich"}], "gruende": [...]}
+    """
     erlaubt = sicht["erlaubt"]
     bereiche = []
+    gegner = []
     for name, erkennung in zip(sicht["aktive_gegner"], erkennungen):
-        bereiche.append(schaetze_bereich(erkennung, sicht["verlauf"], name, sicht["strasse"]))
+        bereich = schaetze_bereich(erkennung, sicht["verlauf"], name, sicht["strasse"])
+        bereiche.append(bereich)
+        gegner.append({"name": name, "typ": erkennung["typ"],
+                       "sicherheit": erkennung["sicherheit"], "bereich": bereich})
     try:
         equity = equity_gegen_bereiche(sicht["handkarten"], sicht["board"], bereiche,
-                                       KI_DURCHLAEUFE, zufall)
+                                       durchlaeufe, zufall)
     except ValueError:
         equity = equity_gegen_zufall(sicht["handkarten"], sicht["board"], sicht["gegner"],
-                                     KI_DURCHLAEUFE, zufall)
+                                     durchlaeufe, zufall)
     fair = 1 / (sicht["gegner"] + 1)
+    odds = pot_odds(sicht)
+
+    gruende = [f"Gewinnchance {equity:.0%} gegen die geschaetzten Haende "
+               f"(fairer Anteil bei {sicht['gegner'] + 1} Spielern: {fair:.0%})"]
+    for g in gegner:
+        if g["typ"] == "unbekannt":
+            gruende.append(f"{g['name']}: noch unbekannt -> Standardbereich {g['bereich']:g} %")
+        else:
+            gruende.append(f"{g['name']}: {TYP_NAMEN[g['typ']]} ({g['sicherheit']:.0%} sicher) "
+                           f"-> vermutlich die besten {g['bereich']:g} % der Haende")
+
+    def ergebnis(aktion, betrag, grund):
+        gruende.append(grund)
+        return {"aktion": aktion, "betrag": betrag, "equity": equity, "fair": fair,
+                "pot_odds": odds, "gegner": gegner, "gruende": gruende}
 
     # Wie sicher und wie "bluff-anfaellig" sind die Gegner?
     typen = [e["typ"] for e in erkennungen]
@@ -204,6 +240,10 @@ def ki_entscheidung(sicht, erkennungen, zufall):
     alle_tight = all(t in ["felsen", "tag"] for t in typen)
     station_dabei = max([s for t, s in zip(typen, sicherheiten) if t == "station"], default=0)
     maniac_dabei = max([s for t, s in zip(typen, sicherheiten) if t == "maniac"], default=0)
+    if station_dabei > 0.3:
+        gruende.append("Calling Station dabei: duenner auf Wert setzen, nicht bluffen")
+    if maniac_dabei > 0.3:
+        gruende.append("Maniac dabei: nur mit sehr starker Hand erhoehen, ihn bluffen lassen")
 
     # Schwellen wie beim Equity-Bot, angepasst je nach Gegner (gewichtet mit Sicherheit):
     # gegen Stations duenner auf Wert setzen, gegen Maniacs nur sehr stark erhoehen
@@ -211,22 +251,26 @@ def ki_entscheidung(sicht, erkennungen, zufall):
     stark_schwelle = 0.20 - 0.05 * station_dabei + 0.10 * maniac_dabei
 
     if "raise" in erlaubt and equity > fair + stark_schwelle:
-        return "raise", raise_betrag(sicht, "pot")
+        return ergebnis("raise", raise_betrag(sicht, "pot"),
+                        "Deutlich vorne -> um den Pot erhoehen")
     if "raise" in erlaubt and equity > fair + wert_schwelle:
-        return "raise", raise_betrag(sicht, "halber_pot")
+        return ergebnis("raise", raise_betrag(sicht, "halber_pot"),
+                        "Vorne -> um den halben Pot erhoehen (auf Wert)")
 
     # Bluff / Steal: nur gegen sicher erkannte, enge Spieler und wenn nichts zu zahlen ist
     if "raise" in erlaubt and "check" in erlaubt and alle_tight and typen:
         if zufall.random() < 0.35 * min_sicherheit:
-            return "raise", raise_betrag(sicht, "halber_pot")
+            return ergebnis("raise", raise_betrag(sicht, "halber_pot"),
+                            "Nur enge Gegner -> Bluff, sie geben oft auf")
     # Preflop-Steal gegen enge Spieler, wenn noch keiner erhoeht hat
     if (sicht["strasse"] == "preflop" and "raise" in erlaubt and alle_tight and typen
             and sicht["hoechster"] <= sicht["big_blind"]
             and zufall.random() < 0.4 * min_sicherheit):
-        return "raise", raise_betrag(sicht, "pot")
+        return ergebnis("raise", raise_betrag(sicht, "pot"),
+                        "Enge Gegner und keiner hat erhoeht -> Blinds stehlen")
 
     if "check" in erlaubt:
-        return "check", None
-    if equity >= pot_odds(sicht):
-        return "call", None
-    return "fold", None
+        return ergebnis("check", None, "Nicht stark genug zum Setzen, Check kostet nichts")
+    if equity >= odds:
+        return ergebnis("call", None, f"Pot Odds: Du brauchst {odds:.0%}, hast {equity:.0%} -> Call lohnt sich")
+    return ergebnis("fold", None, f"Pot Odds: Du brauchst {odds:.0%}, hast nur {equity:.0%} -> Fold")
