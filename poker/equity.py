@@ -105,3 +105,70 @@ def equity_gegen_zufall(hand, board, anzahl_gegner, durchlaeufe=1000, zufall=ran
         if 0 in gewinner:
             punkte = punkte + 1 / len(gewinner)
     return punkte / durchlaeufe
+
+
+def equity_gegen_bereiche(hand, board, bereiche, durchlaeufe=1000, zufall=random):
+    """Equity gegen Gegner, deren Karten aus einem Handbereich stammen.
+
+    bereiche: ein Prozentwert pro Gegner, z. B. [8, 100] = ein Gegner spielt
+              nur die besten 8 % (Felsen), einer spielt alles (zufaellig).
+    Wie equity_gegen_zufall, nur dass die Gegnerhaende nicht aus allen
+    Haenden gezogen werden, sondern aus ihrem Bereich.
+    """
+    if len(bereiche) < 1:
+        raise ValueError("Es braucht mindestens einen Gegner")
+    # Import hier, damit equity.py auch ohne bereiche.py verstaendlich bleibt
+    from poker.bereiche import konkrete_haende
+
+    bekannte_karten = list(hand) + list(board)
+    if len(set(bekannte_karten)) != len(bekannte_karten):
+        raise ValueError("Eine Karte ist doppelt vergeben")
+
+    # Kandidaten pro Gegner einmal vorab bestimmen (ohne eigene Karten und Board)
+    kandidaten = []
+    for prozent in bereiche:
+        haende = konkrete_haende(prozent, bekannte_karten)
+        if len(haende) == 0:
+            raise ValueError("Im Bereich ist keine Hand mehr moeglich")
+        kandidaten.append(haende)
+
+    restdeck = []
+    for karte in erzeuge_deck():
+        if karte not in bekannte_karten:
+            restdeck.append(karte)
+
+    fehlende = 5 - len(board)
+    punkte = 0.0
+    gezaehlt = 0
+    for i in range(durchlaeufe):
+        # Gegnerhaende ziehen; zwei Gegner duerfen keine Karte teilen
+        benutzt = set()
+        gegner = []
+        moeglich = True
+        for haende in kandidaten:
+            for versuch in range(50):
+                gegner_hand = zufall.choice(haende)
+                if gegner_hand[0] not in benutzt and gegner_hand[1] not in benutzt:
+                    break
+            else:
+                moeglich = False
+                break
+            benutzt.update(gegner_hand)
+            gegner.append(gegner_hand)
+        if not moeglich:
+            continue
+
+        deck = [karte for karte in restdeck if karte not in benutzt]
+        zufall.shuffle(deck)
+        komplettes_board = list(board) + austeilen(deck, fehlende)
+
+        werte = [bewerte_hand(list(hand) + komplettes_board)]
+        for gegner_hand in gegner:
+            werte.append(bewerte_hand(gegner_hand + komplettes_board))
+        gewinner = finde_gewinner(werte)
+        if 0 in gewinner:
+            punkte = punkte + 1 / len(gewinner)
+        gezaehlt = gezaehlt + 1
+    if gezaehlt == 0:
+        raise ValueError("Keine passenden Gegnerhaende gefunden")
+    return punkte / gezaehlt
