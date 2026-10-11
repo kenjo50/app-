@@ -8,6 +8,11 @@ Gespeichert werden auch alle Handkarten - spaeter wertvoll fuer die KI.
 
 Stacks: Jeder Bot startet jede Hand mit demselben Stack (Standard 100 Big
 Blinds), wie ein Cash Game mit automatischem Nachkauf.
+
+Duplicate-Modus: Jede Kartenverteilung wird so oft gespielt, wie Bots am
+Tisch sitzen - jedes Mal sitzen die Bots einen Platz weiter. So bekommt
+jeder Bot einmal die guten und einmal die schlechten Karten; das Kartenglueck
+gleicht sich weitgehend aus und die Unsicherheit (+-) wird kleiner.
 """
 
 import math
@@ -29,7 +34,9 @@ from poker.live import (
     starte_hand,
     verarbeite_aktion,
 )
-from poker.profile import handkarten_speichern, oeffne_datenbank
+from poker.ki import erstelle_ki_bot
+from poker.profile import handkarten_speichern, naechste_hand_id, oeffne_datenbank
+from poker.typen import ALLE_TYPEN, erstelle_typ_bot
 
 STANDARD_DATENBANK = "simulation.db"
 STARTSTACK_BB = 100
@@ -48,10 +55,31 @@ def oeffne_simulationsdatenbank(pfad=STANDARD_DATENBANK):
     return verbindung
 
 
-def erstelle_aufstellung(typen):
-    """Macht aus ["zufall", "equity", "equity"] die Bots mit Namen.
+MOEGLICHE_BOTS = list(BOT_TYPEN) + list(ALLE_TYPEN) + ["ki"]
 
-    Ergebnis: {"Zufall 1": zufalls_bot, "Equity 1": equity_bot, "Equity 2": equity_bot}
+
+def erzeuge_bot(typ, zufall, verbindung=None):
+    """Erzeugt einen Bot. Typ-Bots bekommen dabei ihre gestreuten Werte.
+
+    Die KI braucht die Datenbank (fuer die Gegnerprofile); sie wertet nur
+    Haende ab der naechsten Handnummer aus, also nur diese Simulation.
+    """
+    if typ == "ki":
+        if verbindung is None:
+            raise ValueError("Die KI braucht eine Datenbank")
+        return erstelle_ki_bot(verbindung, naechste_hand_id(verbindung))
+    if typ in BOT_TYPEN:
+        return BOT_TYPEN[typ]
+    if typ in ALLE_TYPEN:
+        bot, werte = erstelle_typ_bot(typ, zufall)
+        return bot
+    raise ValueError(f"Unbekannter Bot '{typ}' (moeglich: {', '.join(MOEGLICHE_BOTS)})")
+
+
+def erstelle_aufstellung(typen, zufall=random, verbindung=None):
+    """Macht aus ["zufall", "felsen", "felsen"] die Bots mit Namen.
+
+    Ergebnis: {"Zufall 1": bot, "Felsen 1": bot, "Felsen 2": bot}
     """
     if len(typen) < 2:
         raise ValueError("Es braucht mindestens zwei Bots")
@@ -60,17 +88,25 @@ def erstelle_aufstellung(typen):
     aufstellung = {}
     zaehler = {}
     for typ in typen:
-        if typ not in BOT_TYPEN:
-            raise ValueError(f"Unbekannter Bot '{typ}' (moeglich: {', '.join(BOT_TYPEN)})")
+        bot = erzeuge_bot(typ, zufall, verbindung)
         zaehler[typ] = zaehler.get(typ, 0) + 1
-        aufstellung[f"{typ.capitalize()} {zaehler[typ]}"] = BOT_TYPEN[typ]
+        aufstellung[f"{typ.capitalize()} {zaehler[typ]}"] = bot
     return aufstellung
 
 
-def spiele_bot_hand(verbindung, namen, bots, stacks, small_blind, big_blind, zufall):
-    """Spielt eine komplette Hand. Gibt {name: gewinn_oder_verlust} in Chips zurueck."""
-    deck = erzeuge_deck()
-    zufall.shuffle(deck)
+def spiele_bot_hand(verbindung, namen, bots, stacks, small_blind, big_blind, zufall,
+                    deck=None):
+    """Spielt eine komplette Hand. Gibt {name: gewinn_oder_verlust} in Chips zurueck.
+
+    deck: optional ein schon gemischtes Deck (fuer den Duplicate-Modus). Die
+          Karten werden nach Sitzplatz verteilt: Platz 0 bekommt immer die
+          ersten Karten, egal welcher Bot dort sitzt.
+    """
+    if deck is None:
+        deck = erzeuge_deck()
+        zufall.shuffle(deck)
+    else:
+        deck = list(deck)  # Kopie, damit das Original fuer die naechste Runde bleibt
     handkarten = {}
     for name in namen:
         handkarten[name] = austeilen(deck, 2)
@@ -107,41 +143,75 @@ def spiele_bot_hand(verbindung, namen, bots, stacks, small_blind, big_blind, zuf
 
 
 def simuliere(verbindung, typen, anzahl_haende, small_blind=1, big_blind=2,
-              startstack_bb=STARTSTACK_BB, seed=None, fortschritt=None):
+              startstack_bb=STARTSTACK_BB, seed=None, fortschritt=None, duplicate=False):
     """Laesst Bots `anzahl_haende` Haende gegeneinander spielen.
 
-    typen: z. B. ["zufall", "equity", "equity"]
+    typen: z. B. ["zufall", "felsen", "station"]
     seed: fuer reproduzierbare Ergebnisse; ohne Seed wird das random-Modul
           benutzt (dann wirkt auch random.seed(...)).
     fortschritt: optionale Funktion fortschritt(fertig, gesamt), die nach
           jeder Hand aufgerufen wird (die Oberflaeche kann damit anzeigen).
+    duplicate: Duplicate-Modus (siehe oben); die Handzahl wird dann auf ein
+          Vielfaches der Spielerzahl aufgerundet.
     Rueckgabe: Auswertung pro Bot, siehe werte_aus.
     """
+    zufall = random.Random(seed) if seed is not None else random
+    bots = erstelle_aufstellung(typen, zufall, verbindung)
+    return simuliere_bots(verbindung, bots, anzahl_haende, small_blind, big_blind,
+                          startstack_bb, zufall, fortschritt, duplicate)
+
+
+def simuliere_bots(verbindung, bots, anzahl_haende, small_blind=1, big_blind=2,
+                   startstack_bb=STARTSTACK_BB, zufall=random, fortschritt=None,
+                   duplicate=False):
+    """Wie simuliere, aber mit fertigen Bots {name: bot} (z. B. fuer Tests)."""
     if anzahl_haende < 1:
         raise ValueError("Es braucht mindestens eine Hand")
-    zufall = random.Random(seed) if seed is not None else random
-    bots = erstelle_aufstellung(typen)
     namen = list(bots.keys())
     ergebnisse_bb = {}
     for name in namen:
         ergebnisse_bb[name] = []
 
-    for nummer in range(anzahl_haende):
+    def spiele(sitzordnung, deck):
         stacks = {}
-        for name in namen:
+        for name in sitzordnung:
             stacks[name] = startstack_bb * big_blind
-        ergebnis = spiele_bot_hand(verbindung, namen, bots, stacks,
-                                   small_blind, big_blind, zufall)
-        for name in namen:
+        ergebnis = spiele_bot_hand(verbindung, sitzordnung, bots, stacks,
+                                   small_blind, big_blind, zufall, deck)
+        for name in sitzordnung:
             ergebnisse_bb[name].append(ergebnis[name] / big_blind)
-        namen = rotiere(namen)  # der Button wandert
         if fortschritt is not None:
-            fortschritt(nummer + 1, anzahl_haende)
-    return werte_aus(ergebnisse_bb)
+            fortschritt(len(ergebnisse_bb[namen[0]]), gesamt)
+
+    if not duplicate:
+        gesamt = anzahl_haende
+        for nummer in range(anzahl_haende):
+            spiele(namen, None)
+            namen = rotiere(namen)  # der Button wandert
+        return werte_aus(ergebnisse_bb)
+
+    # Duplicate: eigene Zufallsquelle nur fuers Mischen, damit die Entscheidungen
+    # der Bots die Kartenreihenfolge nicht beeinflussen.
+    deck_zufall = random.Random(zufall.random())
+    verteilungen = math.ceil(anzahl_haende / len(namen))
+    gesamt = verteilungen * len(namen)
+    for nummer in range(verteilungen):
+        deck = erzeuge_deck()
+        deck_zufall.shuffle(deck)
+        sitzordnung = list(namen)
+        for runde in range(len(namen)):
+            spiele(sitzordnung, deck)
+            sitzordnung = rotiere(sitzordnung)
+    # Unabhaengig sind nur die Verteilungen, nicht die einzelnen Haende darin
+    return werte_aus(ergebnisse_bb, gruppe=len(namen))
 
 
-def werte_aus(ergebnisse_bb):
+def werte_aus(ergebnisse_bb, gruppe=1):
     """Wertet die Ergebnisse pro Hand (in Big Blinds) aus.
+
+    gruppe: Im Duplicate-Modus gehoeren immer `gruppe` Haende zusammen (dieselben
+    Karten). Fuer die Unsicherheit wird dann pro Gruppe gemittelt, weil nur die
+    Gruppen voneinander unabhaengig sind.
 
     Pro Bot:
     - "haende":      Anzahl Haende
@@ -154,9 +224,15 @@ def werte_aus(ergebnisse_bb):
     for name, werte in ergebnisse_bb.items():
         anzahl = len(werte)
         mittel = sum(werte) / anzahl
+        # Mittelwert pro Gruppe (bei gruppe=1 einfach die Werte selbst)
+        gruppen_mittel = []
+        for start in range(0, anzahl, gruppe):
+            block = werte[start:start + gruppe]
+            gruppen_mittel.append(sum(block) / len(block))
         fehler = None
-        if anzahl >= 2:
-            fehler = 1.96 * statistics.stdev(werte) / math.sqrt(anzahl) * 100
+        if len(gruppen_mittel) >= 2:
+            fehler = (1.96 * statistics.stdev(gruppen_mittel)
+                      / math.sqrt(len(gruppen_mittel)) * 100)
         auswertung[name] = {
             "haende": anzahl,
             "gesamt_bb": sum(werte),

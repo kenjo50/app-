@@ -247,6 +247,11 @@ def ergebnis_speichern(verbindung, hand_id, name, investiert, gewonnen):
     verbindung.commit()
 
 
+def naechste_hand_id(verbindung):
+    """Nummer, die die naechste neue Hand bekommen wird."""
+    return verbindung.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM haende").fetchone()[0]
+
+
 def hand_abschliessen(verbindung, hand_id):
     """Markiert eine Hand als fertig abgerechnet. Erst dann zaehlt sie in der Statistik."""
     verbindung.execute("UPDATE haende SET abgeschlossen = 1 WHERE id = ?", (hand_id,))
@@ -273,10 +278,11 @@ def lade_aktionen(verbindung, hand_id):
     ).fetchall()
 
 
-def berechne_statistik(verbindung, name):
+def berechne_statistik(verbindung, name, ab_hand_id=0):
     """Berechnet die Kennzahlen eines Spielers ueber alle abgeschlossenen Haende.
 
     Abgebrochene Haende (abgeschlossen = 0) zaehlen nicht mit.
+    ab_hand_id: nur Haende ab dieser Nummer (z. B. nur die aktuelle Simulation).
 
     Rueckgabe: Dictionary mit
     - "haende": Anzahl Haende, bei denen er dabei war
@@ -284,6 +290,8 @@ def berechne_statistik(verbindung, name):
     - "pfr":    Anteil Haende, in denen er preflop erhoeht (bet/raise)
     - "af":     Aggressionsfaktor nach dem Flop: (bets + raises) / calls
     - "bb_pro_100": Gewinn in Big Blinds pro 100 Haende
+    - "aggressiv", "calls": Anzahl bets/raises bzw. calls nach dem Flop
+      (Rohzahlen, z. B. fuer die KI)
 
     Werte, die sich (noch) nicht berechnen lassen, sind None.
     """
@@ -294,15 +302,16 @@ def berechne_statistik(verbindung, name):
 
     haende = verbindung.execute(
         "SELECT COUNT(*) FROM teilnehmer t JOIN haende h ON t.hand_id = h.id "
-        "WHERE t.spieler_id = ? AND h.abgeschlossen = 1", (sid,)
+        "WHERE t.spieler_id = ? AND h.abgeschlossen = 1 AND h.id >= ?", (sid, ab_hand_id)
     ).fetchone()[0]
 
     # Pro Hand die preflop-Aktionen sammeln: {hand_id: [aktion, ...]}
     preflop = {}
     for hand_id, aktion in verbindung.execute(
         "SELECT a.hand_id, a.aktion FROM aktionen a JOIN haende h ON a.hand_id = h.id "
-        "WHERE a.spieler_id = ? AND a.strasse = 'preflop' AND h.abgeschlossen = 1",
-        (sid,),
+        "WHERE a.spieler_id = ? AND a.strasse = 'preflop' AND h.abgeschlossen = 1 "
+        "AND h.id >= ?",
+        (sid, ab_hand_id),
     ):
         if hand_id not in preflop:
             preflop[hand_id] = []
@@ -321,8 +330,9 @@ def berechne_statistik(verbindung, name):
     calls = 0
     for (aktion,) in verbindung.execute(
         "SELECT a.aktion FROM aktionen a JOIN haende h ON a.hand_id = h.id "
-        "WHERE a.spieler_id = ? AND a.strasse != 'preflop' AND h.abgeschlossen = 1",
-        (sid,),
+        "WHERE a.spieler_id = ? AND a.strasse != 'preflop' AND h.abgeschlossen = 1 "
+        "AND h.id >= ?",
+        (sid, ab_hand_id),
     ):
         if aktion in AGGRESSIV:
             aggressiv = aggressiv + 1
@@ -335,14 +345,15 @@ def berechne_statistik(verbindung, name):
     for investiert, gewonnen, big_blind in verbindung.execute(
         "SELECT t.investiert, t.gewonnen, h.big_blind "
         "FROM teilnehmer t JOIN haende h ON t.hand_id = h.id "
-        "WHERE t.spieler_id = ? AND t.gewonnen IS NOT NULL AND h.abgeschlossen = 1",
-        (sid,),
+        "WHERE t.spieler_id = ? AND t.gewonnen IS NOT NULL AND h.abgeschlossen = 1 "
+        "AND h.id >= ?",
+        (sid, ab_hand_id),
     ):
         abgerechnet = abgerechnet + 1
         summe_bb = summe_bb + (gewonnen - investiert) / big_blind
 
     statistik = {"haende": haende, "vpip": None, "pfr": None, "af": None,
-                 "bb_pro_100": None}
+                 "bb_pro_100": None, "aggressiv": aggressiv, "calls": calls}
     if haende > 0:
         statistik["vpip"] = vpip_haende / haende
         statistik["pfr"] = pfr_haende / haende

@@ -85,6 +85,7 @@ def starte_hand(verbindung, namen, small_blind, big_blind, stacks):
         "big_blind": big_blind,
         "letzte_erhoehung": big_blind,  # Groesse der letzten vollen Erhoehung
         "haben_gehandelt": [],       # wer seit der letzten vollen Erhoehung gehandelt hat
+        "verlauf": [],               # alle Aktionen dieser Hand (fuer Bots/KI sichtbar)
         "noch_dran": [],             # wer in dieser Setzrunde noch handeln muss
         "am_zug": None,              # wer jetzt handeln muss (None = Runde vorbei)
         "beendet": False,            # Setzen vorbei
@@ -326,6 +327,8 @@ def verarbeite_aktion(verbindung, zustand, name, grundaktion, betrag=None):
         _setze(zustand, name, neuer_einsatz)
         zustand["hoechster"] = max(zustand["hoechster"], neuer_einsatz)
     zustand["haben_gehandelt"].append(name)
+    zustand["verlauf"].append({"name": name, "strasse": zustand["strasse"],
+                               "aktion": aktion, "betrag": gespeicherter_betrag})
 
     # Wer muss jetzt noch handeln?
     if aktion in ["bet", "raise"]:

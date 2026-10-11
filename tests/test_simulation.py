@@ -85,3 +85,55 @@ def test_auswertung():
     # Mittelwert 1, Standardabweichung wurzel(2), Standardfehler wurzel(2) / wurzel(4)
     assert a["fehler_95"] == pytest.approx(1.96 * 2 ** 0.5 / 2 * 100)
     assert werte_aus({"B": [3]})["B"]["fehler_95"] is None
+
+
+# ---------- Duplicate-Modus ----------
+
+
+def immer_mitgehen(sicht, zufall):
+    """Test-Bot ohne Zufall: checkt oder callt immer."""
+    return ("check", None) if "check" in sicht["erlaubt"] else ("call", None)
+
+
+def test_duplicate_gleiche_bots_genau_null(db):
+    # Zwei identische Bots ohne Zufall: Im Duplicate-Modus bekommt jeder genau
+    # dieselben Karten auf demselben Platz -> beide enden exakt bei 0.
+    from poker.simulation import simuliere_bots
+    bots = {"A": immer_mitgehen, "B": immer_mitgehen}
+    auswertung = simuliere_bots(db, bots, 100, zufall=random.Random(1), duplicate=True)
+    assert auswertung["A"]["gesamt_bb"] == pytest.approx(0)
+    assert auswertung["B"]["gesamt_bb"] == pytest.approx(0)
+    # Ohne Duplicate entscheidet das Kartenglueck
+    normal = simuliere_bots(db, bots, 100, zufall=random.Random(1))
+    assert normal["A"]["gesamt_bb"] != pytest.approx(0)
+
+
+def test_duplicate_gleiche_karten_auf_gleichem_platz(db):
+    simuliere(db, ["zufall", "zufall", "zufall"], 3, seed=4, duplicate=True)
+    karten_platz_0 = db.execute(
+        "SELECT handkarten FROM teilnehmer WHERE sitzplatz = 0 ORDER BY hand_id").fetchall()
+    assert len(karten_platz_0) == 3
+    assert karten_platz_0[0] == karten_platz_0[1] == karten_platz_0[2]
+    spieler_platz_0 = db.execute(
+        "SELECT spieler_id FROM teilnehmer WHERE sitzplatz = 0 ORDER BY hand_id").fetchall()
+    assert len(set(spieler_platz_0)) == 3   # jedes Mal ein anderer Bot
+
+
+def test_duplicate_rundet_handzahl_auf(db):
+    auswertung = simuliere(db, ["zufall", "zufall", "zufall"], 5, seed=1, duplicate=True)
+    assert auswertung["Zufall 1"]["haende"] == 6
+
+
+def test_duplicate_verkleinert_unsicherheit():
+    normal = simuliere(oeffne_simulationsdatenbank(":memory:"),
+                       ["zufall", "equity"], 400, seed=9)
+    duplicate = simuliere(oeffne_simulationsdatenbank(":memory:"),
+                          ["zufall", "equity"], 400, seed=9, duplicate=True)
+    assert duplicate["Equity 1"]["fehler_95"] < normal["Equity 1"]["fehler_95"]
+
+
+def test_auswertung_mit_gruppen():
+    # Gruppen [1, -1] und [2, 2] -> Mittel 0 und 2
+    a = werte_aus({"A": [1, -1, 2, 2]}, gruppe=2)["A"]
+    assert a["bb_pro_100"] == 100
+    assert a["fehler_95"] == pytest.approx(1.96 * 2 ** 0.5 / 2 ** 0.5 * 100)

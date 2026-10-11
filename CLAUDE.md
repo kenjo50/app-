@@ -63,6 +63,17 @@ und schlaegt sie einen Zufalls-Bot? Messung in bb/100 ueber viele Haende.
 - `bewerte_hand` ist die schnelle Version; `bewerte_hand_einfach` bleibt als
   Referenz und wird in den Tests an Zufallshaenden verglichen.
 
+## KI (Baustein 5)
+- `poker/bereiche.py`: Starthaende nach Chen-Formel geordnet, Bereich "beste X %".
+- `poker/typen.py`: Typ-Bots felsen/station/maniac/tag mit Streuung, `misch` als
+  Pruefung (nicht in den KI-Prototypen).
+- `poker/ki.py`: Erkennung = naechster Prototyp (VPIP, PFR, Aggressionsanteil),
+  Sicherheit = Datenlage x Trennschaerfe x Passung, unter 20 Haenden "unbekannt".
+  Gegnerbereiche aus Typ + Aktionen, gemischt mit Standard je nach Sicherheit;
+  Equity gegen Bereiche; Anpassungen immer mit der Sicherheit gewichtet.
+- Prototypen sind gemessen (6er-Tisch). Aendern sich die Typ-Bots, neu messen.
+- Duplicate-Modus: gleiche Karten, rotierte Plaetze; Unsicherheit ueber Verteilungen.
+
 ## Kartendarstellung (verbindlich)
 Karte = Tupel `(rang, farbe)`, `rang` 2..14 (11 Bube, 12 Dame, 13 Koenig, 14 Ass),
 `farbe` in `"Karo"`, `"Herz"`, `"Pik"`, `"Kreuz"`.
@@ -82,12 +93,14 @@ Variante testen.
 2. Equity per Monte-Carlo, Standard 10000 Durchlaeufe (erledigt; Referenz AA vs KK ca. 82 %)
 3. Spielerprofile & Statistiken (SQLite) + Live-Eingabe (`poker/live.py`) fertig
 4. Spiel-Simulation mit Bots (erledigt: Zufalls-Bot, Equity-Bot, `simulation.db`)
-5. KI: Spielertypen erkennen, Gegenstrategie
+5. KI: Spielertypen erkennen, Gegenstrategie (regelbasiert erledigt, ML spaeter)
 6. Oberflaeche: erst CLI, spaeter Web-App
 
 ## Befehle
 - Tests: `python -m pytest`
 - Demo: `python cli.py` oder `python cli.py 42` (fester Seed)
 - Live-Modus: `python cli.py live` (Datenbank `heimrunde.db`)
-- Simulation: `python cli.py sim 1000 zufall,equity,equity 42` (Haende, Bots, Seed)
+- Simulation: `python cli.py sim 1000 zufall,equity,equity 42` (Haende, Bots, Seed),
+  `--duplicate` fuer den Duplicate-Modus; Bots: zufall, equity, felsen, station,
+  maniac, tag, misch, ki
 - Web-App: `python server.py`, dann auf dem iPhone `http://<IP-des-PCs>:8000`
