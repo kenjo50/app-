@@ -6,6 +6,9 @@ Start:  python cli.py                 Demo: zufaellige Hand austeilen und bewert
         python cli.py live test.db    Live-Modus mit anderer Datenbank-Datei
         python cli.py sim 1000 zufall,equity,equity 42
                                       Simulation: 1000 Haende, Bots, Seed (optional)
+        python cli.py sim 1000 ki,felsen,station,maniac,tag 42 --duplicate
+                                      dasselbe im Duplicate-Modus
+        Bots: zufall, equity, felsen, station, maniac, tag, misch, ki
 """
 
 import random
@@ -34,7 +37,8 @@ from poker.live import (
     verarbeite_aktion,
     zu_callen,
 )
-from poker.profile import berechne_statistik, oeffne_datenbank
+from poker.ki import erkenne_typ
+from poker.profile import berechne_statistik, naechste_hand_id, oeffne_datenbank
 from poker.simulation import STANDARD_DATENBANK as SIMULATIONS_DATENBANK
 from poker.simulation import oeffne_simulationsdatenbank, simuliere
 
@@ -394,15 +398,25 @@ def zeige_fortschritt(fertig, gesamt):
 
 
 def simulations_modus(argumente):
-    """python cli.py sim [haende] [bots] [seed]"""
+    """python cli.py sim [haende] [bots] [seed] [--duplicate]"""
+    duplicate = "--duplicate" in argumente
+    argumente = [a for a in argumente if a != "--duplicate"]
     anzahl = int(argumente[0]) if len(argumente) > 0 else 1000
     typen = argumente[1].split(",") if len(argumente) > 1 else ["zufall", "equity"]
     seed = int(argumente[2]) if len(argumente) > 2 else None
-    print(f"Simulation: {anzahl} Haende, Bots: {', '.join(typen)}, "
+    modus = " (Duplicate)" if duplicate else ""
+    print(f"Simulation{modus}: {anzahl} Haende, Bots: {', '.join(typen)}, "
           f"Datenbank: {SIMULATIONS_DATENBANK}")
     db = oeffne_simulationsdatenbank(SIMULATIONS_DATENBANK)
     try:
-        auswertung = simuliere(db, typen, anzahl, seed=seed, fortschritt=zeige_fortschritt)
+        start = naechste_hand_id(db)
+        auswertung = simuliere(db, typen, anzahl, seed=seed, fortschritt=zeige_fortschritt,
+                               duplicate=duplicate)
+        erkennung = {}
+        if "ki" in typen:
+            for name in auswertung:
+                if not name.startswith("Ki"):
+                    erkennung[name] = erkenne_typ(berechne_statistik(db, name, start))
     except ValueError as fehler:
         print(f"Fehler: {fehler}")
         return
@@ -418,6 +432,11 @@ def simulations_modus(argumente):
     print()
     print("+-95 %: Der wahre Wert liegt mit 95 % Wahrscheinlichkeit in diesem Bereich.")
     print("Ueberlappen sich die Bereiche zweier Bots, ist der Unterschied noch nicht sicher.")
+    if erkennung:
+        print()
+        print("So schaetzt die KI die Gegner am Ende ein:")
+        for name, e in erkennung.items():
+            print(f"   {name:<10} -> {e['typ']:<10} Sicherheit {e['sicherheit'] * 100:3.0f} %")
 
 
 if __name__ == "__main__":
