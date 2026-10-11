@@ -34,7 +34,8 @@ from poker.live import (
     starte_hand,
     verarbeite_aktion,
 )
-from poker.profile import handkarten_speichern, oeffne_datenbank
+from poker.ki import erstelle_ki_bot
+from poker.profile import handkarten_speichern, naechste_hand_id, oeffne_datenbank
 from poker.typen import ALLE_TYPEN, erstelle_typ_bot
 
 STANDARD_DATENBANK = "simulation.db"
@@ -54,11 +55,19 @@ def oeffne_simulationsdatenbank(pfad=STANDARD_DATENBANK):
     return verbindung
 
 
-MOEGLICHE_BOTS = list(BOT_TYPEN) + list(ALLE_TYPEN)
+MOEGLICHE_BOTS = list(BOT_TYPEN) + list(ALLE_TYPEN) + ["ki"]
 
 
-def erzeuge_bot(typ, zufall):
-    """Erzeugt einen Bot. Typ-Bots bekommen dabei ihre gestreuten Werte."""
+def erzeuge_bot(typ, zufall, verbindung=None):
+    """Erzeugt einen Bot. Typ-Bots bekommen dabei ihre gestreuten Werte.
+
+    Die KI braucht die Datenbank (fuer die Gegnerprofile); sie wertet nur
+    Haende ab der naechsten Handnummer aus, also nur diese Simulation.
+    """
+    if typ == "ki":
+        if verbindung is None:
+            raise ValueError("Die KI braucht eine Datenbank")
+        return erstelle_ki_bot(verbindung, naechste_hand_id(verbindung))
     if typ in BOT_TYPEN:
         return BOT_TYPEN[typ]
     if typ in ALLE_TYPEN:
@@ -67,7 +76,7 @@ def erzeuge_bot(typ, zufall):
     raise ValueError(f"Unbekannter Bot '{typ}' (moeglich: {', '.join(MOEGLICHE_BOTS)})")
 
 
-def erstelle_aufstellung(typen, zufall=random):
+def erstelle_aufstellung(typen, zufall=random, verbindung=None):
     """Macht aus ["zufall", "felsen", "felsen"] die Bots mit Namen.
 
     Ergebnis: {"Zufall 1": bot, "Felsen 1": bot, "Felsen 2": bot}
@@ -79,7 +88,7 @@ def erstelle_aufstellung(typen, zufall=random):
     aufstellung = {}
     zaehler = {}
     for typ in typen:
-        bot = erzeuge_bot(typ, zufall)
+        bot = erzeuge_bot(typ, zufall, verbindung)
         zaehler[typ] = zaehler.get(typ, 0) + 1
         aufstellung[f"{typ.capitalize()} {zaehler[typ]}"] = bot
     return aufstellung
@@ -147,7 +156,7 @@ def simuliere(verbindung, typen, anzahl_haende, small_blind=1, big_blind=2,
     Rueckgabe: Auswertung pro Bot, siehe werte_aus.
     """
     zufall = random.Random(seed) if seed is not None else random
-    bots = erstelle_aufstellung(typen, zufall)
+    bots = erstelle_aufstellung(typen, zufall, verbindung)
     return simuliere_bots(verbindung, bots, anzahl_haende, small_blind, big_blind,
                           startstack_bb, zufall, fortschritt, duplicate)
 
