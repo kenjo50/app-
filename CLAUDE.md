@@ -65,6 +65,15 @@ und schlaegt sie einen Zufalls-Bot? Messung in bb/100 ueber viele Haende.
 - Web: `web/live.js` (nach `app.js` geladen), Endpunkte unter `/api/abend/...`.
   Bestaetigungen per zweitem Tippen (`bestaetigt`), kein `confirm()`.
 
+## KI-Berater (Live-Tisch)
+- `poker/berater.py`: `empfehlung(verbindung, abend)` fuer den Helden (`abend["held"]`,
+  Karten in `abend["hand"]["held_karten"]`), wenn er dran ist. Nutzt `ki_bewertung`
+  (Entscheidung + Equity + Pot Odds + Begruendung) mit Gegnerprofilen aus der DB.
+- Fester Zufalls-Startwert pro Situation (Hand, Verlauf, Board) -> gleiche Empfehlung;
+  2000 Equity-Durchlaeufe; Raise auf zahlbare Chips (Small Blind) gerundet.
+- Web: Knopf "KI" zwischen den Haenden, Kartenraster fuer die Heldenkarten,
+  Empfehlungs-Kasten mit "Uebernehmen" (traegt die Aktion normal ein).
+
 ## Simulation und Bots
 - Bot = Funktion `bot(sicht, zufall) -> (grundaktion, betrag)`; die Sicht
   (`erstelle_sicht` in `poker/bots.py`) enthaelt nur, was ein Spieler sehen darf.

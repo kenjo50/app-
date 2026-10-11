@@ -238,3 +238,32 @@ def test_statistik_mit_typ(client):
     s = client.get("/api/abend/statistik/Clara").json()
     assert s["haende"] == 1 and s["typ"] == "unbekannt"
     assert client.get("/api/abend/statistik/Niemand").status_code == 400
+
+
+# ---------- KI-Berater ----------
+
+
+def test_berater_ueber_server(client):
+    abend_starten(client)
+    a = client.post("/api/abend/held", json={"name": "Clara"}).json()["abend"]
+    assert a["held"] == "Clara"
+    client.post("/api/abend/hand")
+    assert client.get("/api/abend/empfehlung").status_code == 400     # Karten fehlen
+    hand = client.post("/api/abend/held/karten", json={"karten": "As Ah"}).json()["abend"]["hand"]
+    assert hand["held_dran"] is True
+    assert hand["held_karten"] == [[14, "Pik"], [14, "Herz"]]
+    e = client.get("/api/abend/empfehlung").json()
+    assert e["aktion"] == "raise" and e["betrag"] % 10 == 0
+    assert len(e["gruende"]) >= 2
+    # Uebernehmen = ganz normal als Aktion eintragen
+    hand = client.post("/api/abend/aktion", json={
+        "aktion": "raise", "betrag": f"{e['betrag'] / 100:.2f}"}).json()["abend"]["hand"]
+    assert hand["am_zug"] == "Anna" and hand["held_dran"] is False
+    assert client.get("/api/abend/empfehlung").status_code == 400     # Clara nicht dran
+
+
+def test_berater_fehler_ueber_server(client):
+    abend_starten(client)
+    assert client.post("/api/abend/held", json={"name": "Zoe"}).status_code == 400
+    client.post("/api/abend/hand")
+    assert client.post("/api/abend/held/karten", json={"karten": "As"}).status_code == 400

@@ -56,6 +56,7 @@ def neuer_abend(verbindung, spieler, stacks, small_blind, big_blind):
         "small_blind": int(small_blind),
         "big_blind": int(big_blind),
         "aussetzer": [],
+        "held": None,      # Spieler, fuer den die KI Empfehlungen gibt (poker/berater.py)
         "hand": None,
     }
     speichere_abend(verbindung, abend)
@@ -76,7 +77,9 @@ def lade_abend(verbindung):
     zeile = verbindung.execute("SELECT daten FROM tisch_zustand WHERE id = 1").fetchone()
     if zeile is None:
         return None
-    return json.loads(zeile[0])
+    abend = json.loads(zeile[0])
+    abend.setdefault("held", None)  # aeltere gespeicherte Abende kennen keinen Helden
+    return abend
 
 
 def beende_abend(verbindung):
@@ -127,6 +130,31 @@ def spieler_dazu(verbindung, abend, name, stack):
     speichere_abend(verbindung, abend)
 
 
+def setze_held(verbindung, abend, name):
+    """Waehlt den Spieler, fuer den die KI Empfehlungen gibt (None = keiner)."""
+    if name is not None and name not in abend["spieler"]:
+        raise ValueError(f"{name} sitzt nicht am Tisch")
+    abend["held"] = name
+    if abend["hand"] is not None:
+        abend["hand"]["held_karten"] = None   # Karten gehoerten zum alten Helden
+    speichere_abend(verbindung, abend)
+
+
+def setze_held_karten(abend, karten):
+    """Die zwei Handkarten des Helden fuer die laufende Hand."""
+    zustand = _zustand(abend)
+    if abend.get("held") is None:
+        raise ValueError("Es ist kein Spieler fuer die KI ausgewaehlt")
+    if abend["held"] not in zustand["namen"]:
+        raise ValueError(f"{abend['held']} spielt diese Hand nicht mit")
+    if len(karten) != 2 or karten[0] == karten[1]:
+        raise ValueError("Bitte genau zwei verschiedene Karten waehlen")
+    for karte in karten:
+        if karte in zustand["board"]:
+            raise ValueError("Diese Karte liegt schon auf dem Board")
+    abend["hand"]["held_karten"] = list(karten)
+
+
 def mitspieler(abend):
     """Wer bekommt in der naechsten Hand Karten? (in Sitzreihenfolge, ab Small Blind)"""
     namen = []
@@ -154,7 +182,7 @@ def starte_naechste_hand(verbindung, abend):
     stacks = {name: abend["stacks"][name] for name in namen}
     zustand = live.starte_hand(verbindung, namen, abend["small_blind"],
                                abend["big_blind"], stacks)
-    abend["hand"] = {"zustand": zustand, "zwischenstaende": []}
+    abend["hand"] = {"zustand": zustand, "zwischenstaende": [], "held_karten": None}
     return zustand
 
 
@@ -185,6 +213,10 @@ def aktion(verbindung, abend, grundaktion, betrag=None):
 def board_karten(verbindung, abend, karten):
     """Legt die naechsten Board-Karten hin (Flop 3, Turn 1, River 1)."""
     zustand = _zustand(abend)
+    held_karten = abend["hand"].get("held_karten") or []
+    for karte in karten:
+        if karte in held_karten:
+            raise ValueError("Diese Karte hat der KI-Spieler auf der Hand")
     _merke(abend, "karten")
     try:
         return live.naechste_strasse(verbindung, zustand, karten)
@@ -330,6 +362,7 @@ def anzeige(abend):
         "small_blind": abend["small_blind"],
         "big_blind": abend["big_blind"],
         "phase": phase(abend),
+        "held": abend.get("held"),
         "hand": None,
     }
     if abend["hand"] is None:
@@ -352,6 +385,9 @@ def anzeige(abend):
         "verlauf": zustand["verlauf"][-8:],
         "kann_rueckgaengig": len(abend["hand"]["zwischenstaende"]) > 0,
         "pots": live.berechne_pots(zustand),
+        "held_karten": abend["hand"].get("held_karten"),
+        "held_dran": (am_zug is not None and am_zug == abend.get("held")
+                      and phase(abend) == "aktion"),
     }
     if am_zug is not None and phase(abend) == "aktion":
         hand["erlaubt"] = live.erlaubte_aktionen(zustand, am_zug)

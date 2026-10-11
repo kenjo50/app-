@@ -69,6 +69,8 @@ let startAuswahl = [];         // Abend einrichten: [{name, stack}]
 let boardAuswahl = [];         // gerade angetippte Board-Karten
 let raiseOffen = false;        // Raise-Feld aufgeklappt?
 let showdown = neuerShowdown();
+let heldAuswahl = [];          // gerade angetippte Karten des KI-Spielers
+let empfehlungCache = { schluessel: null, daten: null };  // letzte KI-Empfehlung
 
 function neuerShowdown() {
   // gezeigt: {name: [karte, karte]}, zeigtNicht: Menge, ziel: fuer wen gerade Karten gewaehlt werden
@@ -104,7 +106,14 @@ function zeichneLive(abend) {
     showdown = neuerShowdown();
     showdown.handId = hand ? hand.hand_id : null;
     boardAuswahl = [];
+    heldAuswahl = [];
     raiseOffen = false;
+  }
+  // Beim Showdown die bekannten Karten des KI-Spielers schon eintragen
+  if (abend.phase === "showdown" && hand.held_karten && hand.aktiv.includes(abend.held)
+      && !showdown.vorbelegt) {
+    showdown.gezeigt[abend.held] = hand.held_karten.slice();
+    showdown.vorbelegt = true;
   }
   zeichneSpielerleiste(abend);
   zeichneInfo(abend);
@@ -113,6 +122,68 @@ function zeichneLive(abend) {
   zeichneInhalt(abend);
   zeichneAktionsleiste(abend);
   $("lt-verlauf").innerHTML = hand ? verlaufText(hand) : "";
+  if (hand && hand.held_dran && hand.held_karten) ladeEmpfehlung(hand);
+}
+
+// ---------------- KI-Berater ----------------
+
+function brauchtHeldKarten(abend) {
+  // Der KI-Spieler spielt mit, aber seine Karten fehlen noch
+  const hand = abend.hand;
+  return Boolean(abend.held && hand && hand.aktiv.includes(abend.held) && !hand.held_karten
+    && abend.phase !== "showdown");
+}
+
+function situationsSchluessel(hand) {
+  return [hand.hand_id, hand.pot, hand.board.length, hand.am_zug, JSON.stringify(hand.verlauf)].join("|");
+}
+
+async function ladeEmpfehlung(hand) {
+  const schluessel = situationsSchluessel(hand);
+  if (empfehlungCache.schluessel === schluessel) {
+    if (empfehlungCache.daten) zeigeEmpfehlung(empfehlungCache.daten);
+    return;
+  }
+  empfehlungCache = { schluessel, daten: null };
+  try {
+    const daten = await api("/api/abend/empfehlung");
+    if (empfehlungCache.schluessel !== schluessel) return;   // inzwischen weitergespielt
+    empfehlungCache.daten = daten;
+    zeigeEmpfehlung(daten);
+  } catch (e) {
+    empfehlungCache = { schluessel: null, daten: null };
+  }
+}
+
+function empfehlungText(e) {
+  const woerter = { fold: "FOLD", check: "CHECK", call: "CALL" };
+  if (e.aktion === "raise") {
+    const wort = Math.max(...Object.values(liveStand.hand.einsaetze)) === 0 ? "BET" : "RAISE auf";
+    return `${wort} ${euro(e.betrag)}`;
+  }
+  if (e.aktion === "call") return `CALL ${euro(liveStand.hand.zu_callen)}`;
+  return woerter[e.aktion];
+}
+
+function zeigeEmpfehlung(e) {
+  const kasten = $("lt-empfehlung");
+  if (!kasten) return;
+  kasten.className = "empfehlung " + e.aktion;
+  kasten.innerHTML = `
+    <div class="klein">🤖 KI empfiehlt für ${esc(liveStand.held)}</div>
+    <div class="empfehlung-aktion">${empfehlungText(e)}</div>
+    <div class="klein">Gewinnchance <strong>${Math.round(e.equity * 100)} %</strong>
+      ${e.pot_odds > 0 ? ` · nötig (Pot Odds) <strong>${Math.round(e.pot_odds * 100)} %</strong>` : ""}</div>
+    <ul class="gruende">${e.gruende.map((g) => `<li>${esc(g)}</li>`).join("")}</ul>
+    <button class="haupt gross" data-uebernehmen="1">Übernehmen</button>`;
+}
+
+function heldKartenFeld(abend) {
+  const hand = abend.hand;
+  const benutzt = new Set(hand.board.map(kartenSchluessel));
+  const gewaehlt = new Set(heldAuswahl.map(kartenSchluessel));
+  return `<div class="held-feld"><h2>🤖 Karten von ${esc(abend.held)} antippen (${heldAuswahl.length}/2)</h2>
+    ${kartenraster(benutzt, gewaehlt)}</div>`;
 }
 
 function zeichneSpielerleiste(abend) {
@@ -136,8 +207,9 @@ function zeichneSpielerleiste(abend) {
     } else if (hand) {
       klassen.push("aus");
     }
+    const held = abend.held === name ? "🤖 " : "";
     return `<button class="spielerchip ${klassen.join(" ")}" data-statistik="${esc(name)}">
-      <strong>${esc(name)}</strong><span>${euro(stack)}</span><small>${esc(zusatz)}</small></button>`;
+      <strong>${held}${esc(name)}</strong><span>${euro(stack)}</span><small>${esc(zusatz)}</small></button>`;
   }).join("");
 }
 
@@ -169,13 +241,24 @@ function verlaufText(hand) {
 function zeichneInhalt(abend) {
   const hand = abend.hand;
   const ziel = $("lt-inhalt");
-  if (abend.phase === "keine_hand") {
+  if (brauchtHeldKarten(abend)) {
+    // Zuerst die Karten des KI-Spielers, sonst kann die KI nichts empfehlen
+    ziel.innerHTML = heldKartenFeld(abend);
+  } else if (abend.phase === "keine_hand") {
     ziel.innerHTML = zwischenDenHaenden(abend);
   } else if (abend.phase === "aktion") {
-    ziel.innerHTML = raiseOffen && hand.raise ? raiseFeld(hand) : "";
+    let html = "";
+    if (hand.held_karten) {
+      html += `<p class="held-karten">🤖 ${esc(abend.held)}: ${hand.held_karten.map((k) => karteHtml(k, true)).join("")}</p>`;
+    }
+    if (hand.held_dran && hand.held_karten) {
+      html += '<div id="lt-empfehlung" class="empfehlung">🤖 KI rechnet …</div>';
+    }
+    ziel.innerHTML = html + (raiseOffen && hand.raise ? raiseFeld(hand) : "");
   } else if (abend.phase === "karten") {
     const namen = { flop: "Flop", turn: "Turn", river: "River" };
     const benutzt = new Set(hand.board.map(kartenSchluessel));
+    for (const k of hand.held_karten || []) benutzt.add(kartenSchluessel(k));
     const gewaehlt = new Set(boardAuswahl.map(kartenSchluessel));
     ziel.innerHTML = `<h2>${namen[hand.naechste_strasse]}: ${hand.neue_karten} Karte(n) antippen
       (${boardAuswahl.length}/${hand.neue_karten})</h2>` + kartenraster(benutzt, gewaehlt);
@@ -196,7 +279,8 @@ function zwischenDenHaenden(abend) {
     return `<tr class="${aus ? "raus" : ""}"><td>${esc(name)}</td><td class="zahl">${euro(abend.stacks[name])}</td>
       <td><button class="klein-knopf" data-nachkauf="${esc(name)}">+ Nachkauf</button>
       <button class="klein-knopf" data-aussetzen="${esc(name)}" data-aus="${aus ? "0" : "1"}">
-        ${aus ? "Wieder dabei" : "Setzt aus"}</button></td></tr>`;
+        ${aus ? "Wieder dabei" : "Setzt aus"}</button>
+      <button class="klein-knopf ${abend.held === name ? "haupt" : ""}" data-held="${esc(name)}">🤖 KI</button></td></tr>`;
   }).join("");
   return `<h2>Zwischen den Händen</h2>
     <table><tbody>${zeilen}</tbody></table>
@@ -396,7 +480,33 @@ $("tab-hand").addEventListener("click", async (e) => {
     return meldung("Hand abgebrochen – sie zählt nicht in der Statistik", true);
   }
 
+  // --- KI-Berater ---
+  if (d.uebernehmen) {
+    const e = empfehlungCache.daten;
+    if (!e) return;
+    return sendeAktion(e.aktion, e.aktion === "raise" ? e.betrag : null);
+  }
+  if (d.held !== undefined) {
+    // Nochmal tippen = KI-Spieler wieder abwaehlen
+    const name = liveStand.held === d.held ? null : d.held;
+    uebernimm(await api("/api/abend/held", "POST", { name }));
+    return meldung(name ? `Die KI berät jetzt ${name}` : "KI-Berater aus", true);
+  }
+
   // --- Karten antippen ---
+  if (d.karte && brauchtHeldKarten(liveStand)) {
+    const karte = karteAusKnopf(b);
+    const schluessel = kartenSchluessel(karte);
+    const vorhanden = heldAuswahl.findIndex((k) => kartenSchluessel(k) === schluessel);
+    if (vorhanden >= 0) heldAuswahl.splice(vorhanden, 1);
+    else heldAuswahl.push(karte);
+    if (heldAuswahl.length === 2) {
+      const karten = heldAuswahl.map(kartenCode).join(" ");
+      heldAuswahl = [];
+      return uebernimm(await api("/api/abend/held/karten", "POST", { karten }));
+    }
+    return zeichneLive(liveStand);
+  }
   if (d.karte) {
     const karte = karteAusKnopf(b);
     if (liveStand.phase === "karten") {

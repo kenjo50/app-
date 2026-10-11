@@ -26,6 +26,7 @@ from fastapi.staticfiles import StaticFiles
 
 from poker import clock as clockmodul
 from poker import kasse, turnier
+from poker import berater
 from poker import tisch as tischmodul
 from poker.deck import lies_karten
 from poker.profile import oeffne_datenbank, spieler_namen
@@ -418,6 +419,23 @@ def erstelle_app(datenbank_pfad, uhr=time.time):
         live(tischmodul.spieler_dazu, abend(), daten.get("name", ""),
              kasse.euro_zu_cent(daten.get("stack", "0")))
         return live_antwort()
+
+    @app.post("/api/abend/held")
+    def abend_held(daten: dict = Body(...)):
+        """{"name": "Ben"} oder {"name": null}: fuer wen die KI Empfehlungen gibt"""
+        live(tischmodul.setze_held, abend(), daten.get("name"))
+        return live_antwort()
+
+    @app.post("/api/abend/held/karten")
+    def abend_held_karten(daten: dict = Body(...)):
+        """{"karten": "As Kd"}"""
+        with sperre:
+            tischmodul.setze_held_karten(abend(), lies_karten(daten.get("karten", "")))
+        return live_antwort()
+
+    @app.get("/api/abend/empfehlung")
+    def abend_empfehlung():
+        return live(berater.empfehlung, abend())
 
     @app.get("/api/abend/statistik/{name}")
     def abend_statistik(name: str):
