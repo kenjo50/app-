@@ -121,3 +121,120 @@ def test_ungueltiger_betrag(client):
     c = client.post("/api/cash", json={}).json()["id"]
     antwort = client.post(f"/api/cash/{c}/buyin", json={"name": "Anna", "betrag": "viel"})
     assert antwort.status_code == 400
+
+
+# ---------- Live-Abend (Haende mitschreiben) ----------
+
+
+def abend_starten(client):
+    antwort = client.post("/api/abend", json={
+        "spieler": ["Anna", "Ben", "Clara"],
+        "stacks": {"Anna": "10", "Ben": "10", "Clara": "10"},
+        "small_blind": "0,10", "big_blind": "0,20"})
+    assert antwort.status_code == 200
+    return antwort.json()["abend"]
+
+
+def test_abend_starten_und_hand_spielen(client):
+    assert client.get("/api/abend").json()["abend"] is None
+    abend = abend_starten(client)
+    assert abend["stacks"]["Anna"] == 1000          # Euro -> Cent
+    assert abend["phase"] == "keine_hand"
+
+    hand = client.post("/api/abend/hand").json()["abend"]["hand"]
+    assert hand["am_zug"] == "Clara"
+    assert hand["erlaubt"] == ["fold", "call", "raise"]
+    assert hand["raise"]["mindest"] == 40
+
+    client.post("/api/abend/aktion", json={"aktion": "raise", "betrag": "0,60"})
+    client.post("/api/abend/aktion", json={"aktion": "fold"})
+    a = client.post("/api/abend/aktion", json={"aktion": "fold"}).json()["abend"]
+    assert a["phase"] == "gewonnen"
+    antwort = client.post("/api/abend/gewonnen").json()
+    assert antwort["ergebnis"] == {"Anna": -10, "Ben": -20, "Clara": 30}
+    assert antwort["abend"]["spieler"] == ["Ben", "Clara", "Anna"]   # Button wandert
+
+
+def test_rueckgaengig_ueber_server(client):
+    abend_starten(client)
+    client.post("/api/abend/hand")
+    client.post("/api/abend/aktion", json={"aktion": "call"})
+    hand = client.post("/api/abend/rueckgaengig").json()["abend"]["hand"]
+    assert hand["am_zug"] == "Clara"
+    assert hand["kann_rueckgaengig"] is False
+
+
+def test_karten_und_showdown_ueber_server(client):
+    abend_starten(client)
+    client.post("/api/abend/hand")
+    for aktion in ["call", "call", "check"]:
+        client.post("/api/abend/aktion", json={"aktion": aktion})
+    for karten in ["Ks 9h 4d", "2c", "7s"]:
+        a = client.post("/api/abend/karten", json={"karten": karten}).json()["abend"]
+        for i in range(3):
+            a = client.post("/api/abend/aktion", json={"aktion": "check"}).json()["abend"]
+    assert a["phase"] == "showdown"
+    gezeigte = {"Anna": "Kh Qc", "Ben": "9s 9c", "Clara": ""}
+    vorschau = client.post("/api/abend/showdown/vorschau", json={"gezeigte": gezeigte}).json()
+    assert vorschau["pots"][0]["gewinner"] == ["Ben"]
+    assert vorschau["handarten"]["Ben"] == "Drilling"
+    antwort = client.post("/api/abend/showdown", json={"gezeigte": gezeigte}).json()
+    assert antwort["ergebnis"]["Ben"] == 40
+
+
+def test_falsche_eingaben_ueber_server(client):
+    assert client.post("/api/abend/hand").status_code == 400          # kein Abend
+    abend_starten(client)
+    client.post("/api/abend/hand")
+    antwort = client.post("/api/abend/aktion", json={"aktion": "check"})
+    assert antwort.status_code == 400 and "checken" in antwort.json()["detail"]
+    assert client.post("/api/abend/karten", json={"karten": "Ks"}).status_code == 400
+    assert client.post("/api/abend/rueckgaengig").status_code == 400  # nichts zu tun
+    # Waehrend der Hand kein neuer Abend und kein Nachkauf
+    assert client.post("/api/abend/nachkauf",
+                       json={"name": "Anna", "betrag": "5"}).status_code == 400
+
+
+def test_abgebrochene_hand_ueber_server(client):
+    abend_starten(client)
+    client.post("/api/abend/hand")
+    client.post("/api/abend/aktion", json={"aktion": "raise", "betrag": "0,60"})
+    a = client.post("/api/abend/abbrechen").json()["abend"]
+    assert a["phase"] == "keine_hand"
+    assert a["stacks"]["Clara"] == 1000
+    assert client.get("/api/abend/statistik/Clara").json()["haende"] == 0
+
+
+def test_zwischen_den_haenden_ueber_server(client):
+    abend_starten(client)
+    a = client.post("/api/abend/nachkauf", json={"name": "Anna", "betrag": "5"}).json()["abend"]
+    assert a["stacks"]["Anna"] == 1500
+    a = client.post("/api/abend/aussetzen", json={"name": "Ben", "aussetzen": True}).json()["abend"]
+    assert a["naechste_hand"] == ["Anna", "Clara"]
+    a = client.post("/api/abend/dazu", json={"name": "Dave", "stack": "10"}).json()["abend"]
+    assert "Dave" in a["spieler"]
+
+
+def test_abend_uebersteht_neustart(tmp_path, uhr):
+    pfad = str(tmp_path / "neustart.db")
+    erster = TestClient(erstelle_app(pfad, uhr))
+    abend_starten(erster)
+    erster.post("/api/abend/hand")
+    # "Neustart": neue App mit derselben Datenbank
+    zweiter = TestClient(erstelle_app(pfad, uhr))
+    a = zweiter.get("/api/abend").json()["abend"]
+    assert a["spieler"] == ["Anna", "Ben", "Clara"]
+    assert a["phase"] == "keine_hand"    # die laufende Hand wurde verworfen
+    zweiter.delete("/api/abend")
+    assert zweiter.get("/api/abend").json()["abend"] is None
+
+
+def test_statistik_mit_typ(client):
+    abend_starten(client)
+    client.post("/api/abend/hand")
+    client.post("/api/abend/aktion", json={"aktion": "fold"})
+    client.post("/api/abend/aktion", json={"aktion": "fold"})
+    client.post("/api/abend/gewonnen")
+    s = client.get("/api/abend/statistik/Clara").json()
+    assert s["haende"] == 1 and s["typ"] == "unbekannt"
+    assert client.get("/api/abend/statistik/Niemand").status_code == 400

@@ -18,6 +18,8 @@ Tabellen:
 - abende:      ein Turnier oder Cash Game (Buy-in-Betraege, Auszahlungsstruktur)
 - abend_spieler: wer an einem Abend dabei ist (im Turnier mit Platzierung)
 - buchungen:   Geldbewegungen in Cent: buyin, rebuy, addon, cashout, auszahlung
+- tisch_zustand: der laufende Live-Abend der Web-App (JSON), damit er einen
+               Server-Neustart uebersteht
 """
 
 import json
@@ -82,6 +84,10 @@ CREATE TABLE IF NOT EXISTS abend_spieler (
     spieler_id  INTEGER NOT NULL REFERENCES spieler(id),
     platz       INTEGER,
     PRIMARY KEY (abend_id, spieler_id)
+);
+CREATE TABLE IF NOT EXISTS tisch_zustand (
+    id      INTEGER PRIMARY KEY CHECK (id = 1),
+    daten   TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS buchungen (
     id           INTEGER PRIMARY KEY,
@@ -250,6 +256,15 @@ def ergebnis_speichern(verbindung, hand_id, name, investiert, gewonnen):
 def naechste_hand_id(verbindung):
     """Nummer, die die naechste neue Hand bekommen wird."""
     return verbindung.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM haende").fetchone()[0]
+
+
+def letzte_aktion_loeschen(verbindung, hand_id):
+    """Loescht die zuletzt gespeicherte Aktion einer Hand (fuer "Rueckgaengig")."""
+    verbindung.execute(
+        "DELETE FROM aktionen WHERE id = "
+        "(SELECT MAX(id) FROM aktionen WHERE hand_id = ?)", (hand_id,)
+    )
+    verbindung.commit()
 
 
 def hand_abschliessen(verbindung, hand_id):

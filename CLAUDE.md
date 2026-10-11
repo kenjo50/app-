@@ -53,6 +53,18 @@ und schlaegt sie einen Zufalls-Bot? Messung in bb/100 ueber viele Haende.
   Web-App in `web/` fragt alle 250 ms ab. Nur das Geraet mit "Dieses Geraet steuert"
   zeigt Knoepfe und spricht (Web Speech API), Piepton per Web Audio API.
 
+## Live-Abend in der Web-App (Reiter "Hand")
+- `poker/tisch.py` verwaltet den Abend um `live.py` herum (live.py bleibt unveraendert):
+  Spieler/Sitzordnung, Stacks, Blinds, Aussetzer, Button wandert nach jeder Hand.
+- Betraege in Cent (ganze Zahlen); der Server rechnet Euro-Eingaben um.
+- Rueckgaengig: vor jeder Aktion/Board-Karte wird der Zustand kopiert
+  (`zwischenstaende`); `rueckgaengig` stellt ihn her und loescht die letzte
+  Aktion in der DB (`letzte_aktion_loeschen`) bzw. setzt das Board zurueck.
+- Abend wird in `tisch_zustand` gespeichert; eine laufende Hand geht bei Neustart
+  verloren (abgeschlossen = 0, zaehlt nicht).
+- Web: `web/live.js` (nach `app.js` geladen), Endpunkte unter `/api/abend/...`.
+  Bestaetigungen per zweitem Tippen (`bestaetigt`), kein `confirm()`.
+
 ## Simulation und Bots
 - Bot = Funktion `bot(sicht, zufall) -> (grundaktion, betrag)`; die Sicht
   (`erstelle_sicht` in `poker/bots.py`) enthaelt nur, was ein Spieler sehen darf.
@@ -94,7 +106,7 @@ Variante testen.
 3. Spielerprofile & Statistiken (SQLite) + Live-Eingabe (`poker/live.py`) fertig
 4. Spiel-Simulation mit Bots (erledigt: Zufalls-Bot, Equity-Bot, `simulation.db`)
 5. KI: Spielertypen erkennen, Gegenstrategie (regelbasiert erledigt, ML spaeter)
-6. Oberflaeche: erst CLI, spaeter Web-App
+6. Oberflaeche: CLI und Web-App (Timer, Clock, Kasse, Live-Abend)
 
 ## Befehle
 - Tests: `python -m pytest`

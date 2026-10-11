@@ -6,6 +6,9 @@ Dann auf dem iPhone im selben WLAN: http://<IP-des-PCs>:8000
 
 Der Server ist nur die Bruecke zwischen Web-App und Python-Kern:
 - Timer- und Clock-Zustand liegen im Arbeitsspeicher (ein Turnier zur Zeit).
+- Der Live-Abend (Haende mitschreiben, poker/tisch.py) liegt im Arbeitsspeicher
+  und zusaetzlich in der Datenbank, damit er einen Neustart uebersteht.
+  Betraege kommen von der App in Euro und werden hier in Cent umgerechnet.
 - Kasse und Blind-Vorlagen liegen in der SQLite-Datenbank.
 - Ansagen aus dem Kern bekommen eine laufende Nummer (id). Die Web-App fragt
   regelmaessig "alles nach id X" ab und liest neue Ansagen vor.
@@ -23,6 +26,8 @@ from fastapi.staticfiles import StaticFiles
 
 from poker import clock as clockmodul
 from poker import kasse, turnier
+from poker import tisch as tischmodul
+from poker.deck import lies_karten
 from poker.profile import oeffne_datenbank, spieler_namen
 
 STANDARD_DATENBANK = "heimrunde.db"
@@ -40,10 +45,16 @@ def erstelle_app(datenbank_pfad, uhr=time.time):
         "clock": clockmodul.neue_clock(),
         "ansagen": [],
         "naechste_id": 1,
+        "abend": None,
     }
 
     def datenbank():
         return oeffne_datenbank(datenbank_pfad)
+
+    # Einen gespeicherten Abend nach einem Neustart wieder aufnehmen
+    db = datenbank()
+    tisch["abend"] = tischmodul.lade_abend(db)
+    db.close()
 
     def merke(ansagen):
         """Gibt Ansagen aus dem Kern eine Nummer und merkt sie sich."""
@@ -287,6 +298,134 @@ def erstelle_app(datenbank_pfad, uhr=time.time):
     @app.post("/api/cash/{abend_id}/abschliessen")
     def cash_abschliessen(abend_id: int):
         return mit_db(kasse.cash_abschliessen, abend_id)
+
+    # ---------------- Live-Abend (Haende mitschreiben) ----------------
+
+    def abend():
+        if tisch["abend"] is None:
+            raise ValueError("Es laeuft kein Abend - bitte zuerst einen Abend starten")
+        return tisch["abend"]
+
+    def live_antwort(**zusatz):
+        """Aktueller Stand fuer die App, optional mit Zusatzdaten (z. B. Ergebnis)."""
+        antwort = {"abend": None if tisch["abend"] is None
+                   else tischmodul.anzeige(tisch["abend"])}
+        antwort.update(zusatz)
+        return antwort
+
+    def live(funktion, *argumente):
+        """Kern-Funktion mit Datenbank aufrufen; nur eine Anfrage gleichzeitig."""
+        with sperre:
+            db = datenbank()
+            try:
+                return funktion(db, *argumente)
+            finally:
+                db.close()
+
+    def gezeigte_karten(daten):
+        """{"Ben": "Kh Qc", "Clara": ""} -> {"Ben": [(13, "Herz"), (12, "Kreuz")]}"""
+        gezeigte = {}
+        for name, text in (daten.get("gezeigte") or {}).items():
+            if text and text.strip():
+                gezeigte[name] = lies_karten(text)
+        return gezeigte
+
+    @app.get("/api/abend")
+    def abend_zeigen():
+        return live_antwort()
+
+    @app.post("/api/abend")
+    def abend_starten(daten: dict = Body(...)):
+        """{"spieler": [...], "stacks": {name: "10"}, "small_blind": "0,10", "big_blind": "0,20"}"""
+        stacks = {}
+        for name, betrag in (daten.get("stacks") or {}).items():
+            stacks[name] = kasse.euro_zu_cent(betrag)
+        if tisch["abend"] is not None and tisch["abend"]["hand"] is not None:
+            raise ValueError("Es laeuft noch eine Hand - bitte erst abschliessen oder abbrechen")
+        tisch["abend"] = live(tischmodul.neuer_abend, daten.get("spieler", []), stacks,
+                              kasse.euro_zu_cent(daten.get("small_blind", "0")),
+                              kasse.euro_zu_cent(daten.get("big_blind", "0")))
+        return live_antwort()
+
+    @app.delete("/api/abend")
+    def abend_beenden():
+        live(tischmodul.beende_abend)
+        tisch["abend"] = None
+        return live_antwort()
+
+    @app.post("/api/abend/hand")
+    def hand_starten():
+        live(tischmodul.starte_naechste_hand, abend())
+        return live_antwort()
+
+    @app.post("/api/abend/aktion")
+    def hand_aktion(daten: dict = Body(...)):
+        """{"aktion": "raise", "betrag": "1,50"}; Betrag nur bei raise."""
+        betrag = daten.get("betrag")
+        betrag = None if betrag in [None, ""] else kasse.euro_zu_cent(betrag)
+        live(tischmodul.aktion, abend(), daten.get("aktion"), betrag)
+        return live_antwort()
+
+    @app.post("/api/abend/karten")
+    def hand_karten(daten: dict = Body(...)):
+        """{"karten": "Ks 9h 4d"}"""
+        live(tischmodul.board_karten, abend(), lies_karten(daten.get("karten", "")))
+        return live_antwort()
+
+    @app.post("/api/abend/rueckgaengig")
+    def hand_rueckgaengig():
+        live(tischmodul.rueckgaengig, abend())
+        return live_antwort()
+
+    @app.post("/api/abend/abbrechen")
+    def hand_abbrechen():
+        with sperre:
+            tischmodul.hand_abbrechen(abend())
+        return live_antwort()
+
+    @app.post("/api/abend/gewonnen")
+    def hand_gewonnen():
+        ergebnis = live(tischmodul.abrechnen_ohne_showdown, abend())
+        return live_antwort(ergebnis=ergebnis)
+
+    @app.post("/api/abend/showdown/vorschau")
+    def showdown_vorschau(daten: dict = Body(...)):
+        """{"gezeigte": {"Ben": "Kh Qc", "Clara": ""}} -> wer gewinnt welchen Pot"""
+        with sperre:
+            return tischmodul.showdown_vorschau(abend(), gezeigte_karten(daten))
+
+    @app.post("/api/abend/showdown")
+    def showdown_abrechnen(daten: dict = Body(...)):
+        """{"gezeigte": {...}, "gewinner_von_hand": {"0": ["Anna"]}}"""
+        ergebnis = live(tischmodul.showdown_abrechnen, abend(), gezeigte_karten(daten),
+                        daten.get("gewinner_von_hand"))
+        return live_antwort(ergebnis=ergebnis)
+
+    @app.post("/api/abend/nachkauf")
+    def abend_nachkauf(daten: dict = Body(...)):
+        live(tischmodul.nachkauf, abend(), daten.get("name"),
+             kasse.euro_zu_cent(daten.get("betrag", "0")))
+        return live_antwort()
+
+    @app.post("/api/abend/aussetzen")
+    def abend_aussetzen(daten: dict = Body(...)):
+        """{"name": "Ben", "aussetzen": true}"""
+        live(tischmodul.setze_aus, abend(), daten.get("name"), bool(daten.get("aussetzen", True)))
+        return live_antwort()
+
+    @app.post("/api/abend/dazu")
+    def abend_dazu(daten: dict = Body(...)):
+        live(tischmodul.spieler_dazu, abend(), daten.get("name", ""),
+             kasse.euro_zu_cent(daten.get("stack", "0")))
+        return live_antwort()
+
+    @app.get("/api/abend/statistik/{name}")
+    def abend_statistik(name: str):
+        db = datenbank()
+        try:
+            return tischmodul.spieler_statistik(db, name)
+        finally:
+            db.close()
 
     # Die Web-App selbst (index.html, app.js, ...) - muss als Letztes kommen
     app.mount("/", StaticFiles(directory=WEB_ORDNER, html=True), name="web")
