@@ -49,6 +49,8 @@ def erstelle_sicht(zustand, name, handkarten):
         "erlaubt": erlaubte_aktionen(zustand, name),
         "gegner": gegner,
         "big_blind": zustand["big_blind"],
+        "verlauf": [dict(eintrag) for eintrag in zustand["verlauf"]],
+        "aktive_gegner": [n for n in zustand["aktiv"] if n != name],
     }
 
 

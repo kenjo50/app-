@@ -13,6 +13,7 @@ def sicht(**werte):
         "strasse": "flop", "pot": 20, "zu_callen": 0, "hoechster": 0, "einsatz": 0,
         "stack": 200, "maximal": 200, "mindest_erhoehung": 2, "darf_erhoehen": True,
         "erlaubt": ["check", "raise"], "gegner": 1, "big_blind": 2,
+        "verlauf": [], "aktive_gegner": ["Gegner"],
     }
     grund.update(werte)
     return grund

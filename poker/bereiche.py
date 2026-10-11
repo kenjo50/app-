@@ -17,6 +17,7 @@ Eine Starthand-Klasse ist ein Tupel (hoch, niedrig, suited), z. B.
 """
 
 import math
+from functools import lru_cache
 
 from poker.deck import FARBEN, RAENGE
 
@@ -86,14 +87,17 @@ def _alle_klassen():
 RANGLISTE = _alle_klassen()
 
 
+@lru_cache(maxsize=1024)
 def bereich(prozent):
     """Menge der Starthand-Klassen in den besten `prozent` % aller Haende.
 
     Gezaehlt wird nach konkreten Kombinationen (ein Paar zaehlt 6, AKo 12).
     100 bedeutet: alle Haende.
+    Das Ergebnis wird gemerkt (lru_cache), weil Bots sehr oft nachfragen;
+    deshalb ist es eine unveraenderliche Menge (frozenset).
     """
     if prozent >= 100:
-        return set(RANGLISTE)
+        return frozenset(RANGLISTE)
     grenze = prozent / 100 * ALLE_KOMBINATIONEN
     klassen = set()
     summe = 0
@@ -102,7 +106,7 @@ def bereich(prozent):
             break
         klassen.add(klasse)
         summe = summe + anzahl_kombinationen(klasse)
-    return klassen
+    return frozenset(klassen)
 
 
 def ist_im_bereich(karten, prozent):

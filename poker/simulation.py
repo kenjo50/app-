@@ -30,6 +30,7 @@ from poker.live import (
     verarbeite_aktion,
 )
 from poker.profile import handkarten_speichern, oeffne_datenbank
+from poker.typen import ALLE_TYPEN, erstelle_typ_bot
 
 STANDARD_DATENBANK = "simulation.db"
 STARTSTACK_BB = 100
@@ -48,10 +49,23 @@ def oeffne_simulationsdatenbank(pfad=STANDARD_DATENBANK):
     return verbindung
 
 
-def erstelle_aufstellung(typen):
-    """Macht aus ["zufall", "equity", "equity"] die Bots mit Namen.
+MOEGLICHE_BOTS = list(BOT_TYPEN) + list(ALLE_TYPEN)
 
-    Ergebnis: {"Zufall 1": zufalls_bot, "Equity 1": equity_bot, "Equity 2": equity_bot}
+
+def erzeuge_bot(typ, zufall):
+    """Erzeugt einen Bot. Typ-Bots bekommen dabei ihre gestreuten Werte."""
+    if typ in BOT_TYPEN:
+        return BOT_TYPEN[typ]
+    if typ in ALLE_TYPEN:
+        bot, werte = erstelle_typ_bot(typ, zufall)
+        return bot
+    raise ValueError(f"Unbekannter Bot '{typ}' (moeglich: {', '.join(MOEGLICHE_BOTS)})")
+
+
+def erstelle_aufstellung(typen, zufall=random):
+    """Macht aus ["zufall", "felsen", "felsen"] die Bots mit Namen.
+
+    Ergebnis: {"Zufall 1": bot, "Felsen 1": bot, "Felsen 2": bot}
     """
     if len(typen) < 2:
         raise ValueError("Es braucht mindestens zwei Bots")
@@ -60,10 +74,9 @@ def erstelle_aufstellung(typen):
     aufstellung = {}
     zaehler = {}
     for typ in typen:
-        if typ not in BOT_TYPEN:
-            raise ValueError(f"Unbekannter Bot '{typ}' (moeglich: {', '.join(BOT_TYPEN)})")
+        bot = erzeuge_bot(typ, zufall)
         zaehler[typ] = zaehler.get(typ, 0) + 1
-        aufstellung[f"{typ.capitalize()} {zaehler[typ]}"] = BOT_TYPEN[typ]
+        aufstellung[f"{typ.capitalize()} {zaehler[typ]}"] = bot
     return aufstellung
 
 
@@ -120,7 +133,7 @@ def simuliere(verbindung, typen, anzahl_haende, small_blind=1, big_blind=2,
     if anzahl_haende < 1:
         raise ValueError("Es braucht mindestens eine Hand")
     zufall = random.Random(seed) if seed is not None else random
-    bots = erstelle_aufstellung(typen)
+    bots = erstelle_aufstellung(typen, zufall)
     namen = list(bots.keys())
     ergebnisse_bb = {}
     for name in namen:
