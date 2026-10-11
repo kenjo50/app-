@@ -248,3 +248,13 @@ body:has(#lt-aktionen:not([hidden])) main { padding-bottom: 110px; }
                 border-radius: 16px 16px 0 0; padding: 16px 16px calc(env(safe-area-inset-bottom) + 16px);
                 border-top: 1px solid var(--rand); }
 .blatt .kacheln { grid-template-columns: repeat(3, 1fr); }
+
+/* KI-Berater */
+.empfehlung { border: 2px solid var(--akzent); background: #12301f; border-radius: 14px;
+              padding: 12px; margin: 10px 0; }
+.empfehlung.fold { border-color: var(--warnung); background: #3a1513; }
+.empfehlung.check, .empfehlung.call { border-color: var(--gelb); background: #2b2412; }
+.empfehlung-aktion { font-size: 2rem; font-weight: 800; margin: 4px 0; }
+.empfehlung .gruende { margin: 8px 0; padding-left: 18px; font-size: 0.9rem; color: var(--leise); }
+.empfehlung .gruende li { margin: 3px 0; }
+.held-karten { margin: 6px 0; }
