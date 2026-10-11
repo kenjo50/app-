@@ -47,6 +47,31 @@ function meldung(text, gut = false) {
   meldungTimer = setTimeout(() => (el.hidden = true), 3500);
 }
 
+// Bestaetigung per zweitem Tippen statt confirm()-Fenster:
+// confirm() ist auf dem iPhone unzuverlaessig (vor allem als Homescreen-App).
+// 1. Tippen: Knopf wird rot und fragt "Sicher?", 2. Tippen (innerhalb 3 s): los.
+function bestaetigt(knopf, frage = "Sicher?") {
+  if (knopf.dataset.sicher === "1") {
+    zuruecksetzen(knopf);
+    return true;
+  }
+  knopf.dataset.sicher = "1";
+  knopf.dataset.alterText = knopf.textContent;
+  knopf.textContent = frage;
+  knopf.classList.add("bestaetigen");
+  setTimeout(() => {
+    if (knopf.dataset.sicher === "1") zuruecksetzen(knopf);
+  }, 3000);
+  return false;
+}
+
+function zuruecksetzen(knopf) {
+  knopf.textContent = knopf.dataset.alterText;
+  delete knopf.dataset.sicher;
+  delete knopf.dataset.alterText;
+  knopf.classList.remove("bestaetigen");
+}
+
 async function api(pfad, methode = "GET", daten = undefined) {
   const optionen = { method: methode, headers: {} };
   if (daten !== undefined) {
@@ -353,15 +378,17 @@ async function ladeVorlagenListe() {
   }
 }
 
-async function vorlageInTimer(name) {
+async function vorlageInTimer(name, knopf) {
   if (stand && stand.timer && stand.timer.laeuft &&
-      !confirm("Der Timer läuft. Wirklich eine neue Struktur laden?")) return;
+      !bestaetigt(knopf, "Timer läuft – wirklich neu laden?")) return;
   await api("/api/timer/laden", "POST", { vorlage: name });
   await holeStatus();
   zeigeTimerKopf();
 }
-$("timer-vorlage-laden").addEventListener("click", () => vorlageInTimer($("timer-vorlage").value));
-$("timer-vorlage-laden-2").addEventListener("click", () => vorlageInTimer($("timer-vorlage-2").value));
+$("timer-vorlage-laden").addEventListener("click",
+  () => vorlageInTimer($("timer-vorlage").value, $("timer-vorlage-laden")));
+$("timer-vorlage-laden-2").addEventListener("click",
+  () => vorlageInTimer($("timer-vorlage-2").value, $("timer-vorlage-laden-2")));
 
 // ---------------- Clock ----------------
 
@@ -445,13 +472,13 @@ $("s-speichern").addEventListener("click", async () => {
 });
 $("s-loeschen").addEventListener("click", async () => {
   const name = $("s-vorlage").value;
-  if (!confirm(`Vorlage „${name}“ löschen? (Standard-Vorlagen bleiben erhalten.)`)) return;
+  if (!bestaetigt($("s-loeschen"), "Wirklich löschen?")) return;
   await api("/api/vorlagen/" + encodeURIComponent(name), "DELETE");
   await ladeVorlagenListe();
 });
 $("s-verwenden").addEventListener("click", async () => {
   if (stand && stand.timer && stand.timer.laeuft &&
-      !confirm("Der Timer läuft. Wirklich diese Struktur laden?")) return;
+      !bestaetigt($("s-verwenden"), "Timer läuft – wirklich ersetzen?")) return;
   await api("/api/timer/laden", "POST", { levels: struktur, name: $("s-name").value || "Eigene Struktur" });
   await holeStatus();
   zeigeTimerKopf();
@@ -550,8 +577,12 @@ $("tu-spieler").addEventListener("click", async (e) => {
   if (b.dataset.art) {
     zeichneTurnier(await api(`/api/turnier/${id}/buchen`, "POST", { name: b.dataset.name, art: b.dataset.art }));
   } else if (b.dataset.aus) {
-    if (!confirm(`${b.dataset.aus} scheidet aus?`)) return;
-    zeichneTurnier(await api(`/api/turnier/${id}/aus`, "POST", { name: b.dataset.aus }));
+    if (!bestaetigt(b, "Wirklich raus?")) return;
+    const name = b.dataset.aus;
+    const u = await api(`/api/turnier/${id}/aus`, "POST", { name });
+    zeichneTurnier(u);
+    const spieler = u.spieler.find((s) => s.name === name);
+    meldung(`${name} ist raus – Platz ${spieler ? spieler.platz : "?"}`, true);
   } else if (b.dataset.zurueck) {
     zeichneTurnier(await api(`/api/turnier/${id}/zurueck`, "POST", { name: b.dataset.zurueck }));
   }
@@ -584,7 +615,7 @@ $("tu-auszahlung-aendern").addEventListener("click", async () => {
 });
 
 $("tu-abschliessen").addEventListener("click", async () => {
-  if (!confirm("Turnier abschließen und Auszahlungen buchen?")) return;
+  if (!bestaetigt($("tu-abschliessen"), "Wirklich abschließen?")) return;
   zeichneTurnier(await api(`/api/turnier/${turnierId()}/abschliessen`, "POST"));
   meldung("Turnier abgeschlossen", true);
 });
@@ -669,7 +700,7 @@ $("ca-spieler").addEventListener("click", async (e) => {
   if (!b) return;
   const id = cashId();
   if (b.dataset.loeschen) {
-    if (!confirm("Diesen Buy-in löschen?")) return;
+    if (!bestaetigt(b, "Löschen?")) return;
     await api("/api/buchung/" + b.dataset.loeschen, "DELETE");
     zeichneCash(await api("/api/cash/" + id));
   } else if (b.dataset.cashout) {
@@ -709,10 +740,20 @@ $("ca-buyin").addEventListener("click", async () => {
 });
 
 $("ca-abschliessen").addEventListener("click", async () => {
-  const u = await api("/api/cash/" + cashId());
-  if (u.offen.length === 0 && u.differenz_cent !== 0 &&
-      !confirm(`Die Kontrollrechnung hat eine Differenz von ${euroVorzeichen(u.differenz_cent)}. Trotzdem abschließen?`)) return;
-  if (u.offen.length === 0 && u.differenz_cent === 0 && !confirm("Cash Game abschließen?")) return;
+  const knopf = $("ca-abschliessen");
+  if (knopf.dataset.sicher !== "1") {
+    // Beim ersten Tippen pruefen; fehlt noch ein Cash-out, meldet der Server das direkt
+    const u = await api("/api/cash/" + cashId());
+    if (u.offen.length === 0) {
+      const frage = u.differenz_cent !== 0
+        ? `Differenz ${euroVorzeichen(u.differenz_cent)} – trotzdem?`
+        : "Wirklich abschließen?";
+      bestaetigt(knopf, frage);
+      return;
+    }
+  } else {
+    zuruecksetzen(knopf);
+  }
   zeichneCash(await api(`/api/cash/${cashId()}/abschliessen`, "POST"));
   meldung("Cash Game abgeschlossen", true);
 });

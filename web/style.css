@@ -180,3 +180,7 @@ body.nur-anzeige .steuerung { display: none !important; }
   padding: 12px 14px; border-radius: 12px; text-align: center; z-index: 20;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }
+
+/* Knopf wartet auf das zweite Tippen zur Bestaetigung */
+button.bestaetigen { background: var(--warnung) !important; border-color: var(--warnung) !important;
+                     color: #fff !important; }
