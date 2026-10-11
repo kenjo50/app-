@@ -1,0 +1,174 @@
+/* Dunkles Design: am Pokertisch ist es oft gedimmt, grosse Zahlen sind gut lesbar. */
+:root {
+  --hintergrund: #0f1512;
+  --flaeche: #18221d;
+  --rand: #2a3a31;
+  --text: #e8efe9;
+  --leise: #93a59a;
+  --akzent: #3fbf74;
+  --warnung: #ff5a4f;
+  --gelb: #f2c94c;
+}
+
+* { box-sizing: border-box; }
+
+/* "hidden" muss immer gewinnen, auch gegen display: flex/grid weiter unten */
+[hidden] { display: none !important; }
+
+html, body {
+  margin: 0;
+  background: var(--hintergrund);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 17px;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  padding: env(safe-area-inset-top) 16px calc(env(safe-area-inset-bottom) + 16px);
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+header {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  padding-top: 10px;
+}
+
+nav {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  margin: 12px 0;
+  border-bottom: 1px solid var(--rand);
+}
+
+nav button {
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  border-radius: 0;
+  color: var(--leise);
+  padding: 10px 12px;
+  flex: none;
+}
+
+nav button.aktiv {
+  color: var(--text);
+  border-bottom-color: var(--akzent);
+}
+
+button, select, input {
+  font: inherit;
+  color: var(--text);
+  background: var(--flaeche);
+  border: 1px solid var(--rand);
+  border-radius: 10px;
+  padding: 10px 14px;
+  min-height: 44px; /* gut mit dem Finger zu treffen */
+}
+
+button { cursor: pointer; }
+button:active { transform: scale(0.97); }
+button.haupt { background: var(--akzent); border-color: var(--akzent); color: #06210f; font-weight: 600; }
+button.gross { width: 100%; font-size: 1.4rem; padding: 18px; margin-top: 12px; }
+button.klein-knopf { min-height: 34px; padding: 4px 10px; font-size: 0.9rem; }
+button.gefahr { border-color: var(--warnung); color: var(--warnung); }
+
+input { width: 100%; }
+input.kurz { width: 6em; }
+input[type="number"] { width: 5em; }
+input[type="checkbox"] { width: auto; min-height: 0; }
+
+label { display: block; margin: 8px 0; color: var(--leise); }
+label input { margin-top: 4px; }
+
+.schalter { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--text); }
+
+h2 { font-size: 1.1rem; margin: 24px 0 8px; color: var(--leise); font-weight: 600; }
+
+.zeile { display: flex; gap: 8px; align-items: center; margin: 10px 0; flex-wrap: wrap; }
+.zeile input { flex: 1; min-width: 8em; }
+.zeile input.kurz, .zeile input[type="number"] { flex: none; }
+.mitte { justify-content: center; }
+
+.klein { color: var(--leise); font-size: 0.85rem; }
+.hinweis { background: #2b2412; border: 1px solid var(--gelb); color: var(--gelb);
+           border-radius: 10px; padding: 10px; font-size: 0.9rem; }
+
+/* ---------- Timer ---------- */
+#tab-timer, #tab-clock { text-align: center; }
+#level-titel { font-size: 1.6rem; color: var(--leise); margin-top: 8px; }
+.riesig {
+  font-size: min(28vw, 220px);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  margin: 8px 0;
+  letter-spacing: -0.02em;
+}
+#zeit.warnung { color: var(--gelb); }
+#zeit.angehalten { opacity: 0.5; }
+#blinds { font-size: min(13vw, 80px); font-weight: 700; font-variant-numeric: tabular-nums; }
+#ante { font-size: 1.5rem; color: var(--leise); min-height: 1.5em; }
+.info { display: flex; justify-content: space-around; gap: 12px; margin: 16px 0;
+        background: var(--flaeche); border-radius: 12px; padding: 12px; }
+.info > div { flex: 1; }
+.info span:not(.klein) { font-size: 1.2rem; }
+.knoepfe { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin: 12px 0; }
+.knoepfe #t-start { grid-row: span 2; grid-column: 2; grid-row-start: 1; font-size: 1.3rem; }
+
+/* ---------- Clock ---------- */
+#clock-zeit.laeuft { color: var(--warnung); }
+#clock-banner {
+  position: sticky; top: 0; z-index: 5;
+  display: flex; align-items: center; justify-content: center; gap: 16px;
+  background: var(--warnung); color: #fff; border-radius: 12px;
+  padding: 8px 12px; margin-bottom: 8px; font-size: 1.3rem;
+}
+#clock-banner strong { font-size: 2.2rem; font-variant-numeric: tabular-nums; }
+#clock-banner button { background: rgba(0,0,0,0.25); border-color: transparent; color: #fff; }
+
+/* ---------- Tabellen ---------- */
+table { width: 100%; border-collapse: collapse; margin: 8px 0; }
+th, td { padding: 8px 4px; border-bottom: 1px solid var(--rand); text-align: left; }
+th { color: var(--leise); font-weight: 500; font-size: 0.85rem; }
+td.zahl, th.zahl { text-align: right; font-variant-numeric: tabular-nums; }
+#s-tabelle input { padding: 6px 4px; min-height: 36px; width: 100%; font-size: 0.95rem; }
+#s-tabelle td { padding: 4px 2px; }
+tr.pause td { color: var(--gelb); }
+tr.raus td { color: var(--leise); }
+
+.kacheln { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.kacheln > div { background: var(--flaeche); border-radius: 12px; padding: 12px; text-align: center; }
+.kacheln strong { display: block; font-size: 1.6rem; font-variant-numeric: tabular-nums; }
+
+.karte { background: var(--flaeche); border: 1px solid var(--rand); border-radius: 12px;
+         padding: 12px; margin: 10px 0; }
+.karte h3 { margin: 0 0 6px; font-size: 1.1rem; display: flex; justify-content: space-between; }
+.plus { color: var(--akzent); }
+.minus { color: var(--warnung); }
+.kontrolle { border-radius: 12px; padding: 12px; margin: 12px 0; }
+.kontrolle.ok { background: #12301f; border: 1px solid var(--akzent); }
+.kontrolle.fehler { background: #3a1513; border: 1px solid var(--warnung); }
+.chips { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 8px 0; }
+.chips label { margin: 0; font-size: 0.8rem; text-align: center; }
+.chips input { padding: 6px; text-align: center; }
+
+#meldung {
+  position: fixed; left: 16px; right: 16px; bottom: calc(env(safe-area-inset-bottom) + 16px);
+  background: var(--warnung); color: #fff; padding: 14px; border-radius: 12px;
+  text-align: center; z-index: 10;
+}
+#meldung.gut { background: var(--akzent); color: #06210f; }
+
+/* Nur das steuernde Geraet sieht die Bedien-Knoepfe */
+body.nur-anzeige .steuerung { display: none !important; }
+
+@media (min-width: 700px) {
+  .riesig { font-size: 200px; }
+}

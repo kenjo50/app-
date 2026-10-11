@@ -20,7 +20,48 @@ und schlaegt sie einen Zufalls-Bot? Messung in bb/100 ueber viele Haende.
   `return` zurueck. Kein `print()`/`input()` im Kern, nur in `cli.py`
   (spaeter FastAPI-Server + Web-App/PWA fuers iPhone).
 - Startbare Dateien nutzen `if __name__ == "__main__":`.
-- Speicher: SQLite (ab Baustein 3).
+- Speicher: SQLite (`poker/profile.py`). Erfasst wird jede Aktion in jeder
+  Strasse mit Betrag (fold/check/call/bet/raise). Blinds stehen in `haende`,
+  nicht als Aktion. Karten werden als JSON-Text gespeichert.
+- Betraege = Gesamteinsatz des Spielers in der Setzrunde ("raise AUF 6").
+  Die App rechnet Call-Betraege selbst aus (`poker/live.py`).
+- Reihenfolge: `namen` beginnt mit dem Small Blind. Preflop beginnt Platz 2
+  (heads-up Platz 0), ab dem Flop der erste aktive ab Platz 0 (heads-up Platz 1).
+  `noch_dran` = wer in der Setzrunde noch handeln muss; bet/raise setzt es
+  auf alle anderen aktiven Spieler mit Chips zurueck. `am_zug` ist None, wenn die Runde vorbei ist.
+- Stacks: `starte_hand(..., stacks)`; all-in = aktiv mit Stack 0, handelt nicht mehr.
+  `berechne_pots` bildet Hauptpot/Side Pots aus den Einsatz-Stufen der aktiven Spieler;
+  `showdown_gewinner` und `abrechnen` arbeiten mit einer Gewinnerliste pro Pot.
+- Am Ende jeder Hand: Showdown-Karten eingeben -> Gewinner per Handbewertung;
+  zeigt keiner, Gewinner direkt angeben. `teilnehmer.investiert/gewonnen`
+  ergeben bb/100. Neue Spalten in `NEUE_SPALTEN` eintragen (Nachruesten alter DBs).
+- Statistik zaehlt nur Haende mit `haende.abgeschlossen = 1` (gesetzt in `abrechnen`);
+  abgebrochene Haende bleiben gespeichert, werden aber nicht gewertet.
+- Mindest-Erhoehung: Bet >= Big Blind, Raise um >= letzte volle Erhoehung, All-in
+  immer erlaubt; zu kleines All-in oeffnet nicht wieder (`haben_gehandelt`).
+- Karten-Eingabe: Rang (2-9, T/10, J/B, Q/D, K, A) + Farbe (s, h, d, c),
+  z. B. "As Kh" (`lies_karten` in `poker/deck.py`).
+
+## Turnier-Timer, Clock, Kasse (Web-App)
+- Kern: `poker/turnier.py` (Blindstruktur, Timer, Vorlagen), `poker/clock.py`
+  (Clock Call), `poker/kasse.py` (Turnier-/Cash-Buy-ins, Bilanz).
+- Zeit immer als Parameter `jetzt`; Restzeit = `ende - jetzt` (nie herunterzaehlen).
+  `aktualisiere(..., jetzt)` liefert faellige Ansagen {"zeit", "text", "art"}.
+- Geld immer in Cent als ganze Zahl. Cash: Buy-in 10 Euro, Chips 10/25/50/100 ct.
+  Turnier: Chips 25/100/500/1000, Startstack 3000 (Blinds durch 25 teilbar).
+- Der Web-Server haelt Timer/Clock im Speicher und nummeriert Ansagen; die
+  Web-App in `web/` fragt alle 250 ms ab. Nur das Geraet mit "Dieses Geraet steuert"
+  zeigt Knoepfe und spricht (Web Speech API), Piepton per Web Audio API.
+
+## Simulation und Bots
+- Bot = Funktion `bot(sicht, zufall) -> (grundaktion, betrag)`; die Sicht
+  (`erstelle_sicht` in `poker/bots.py`) enthaelt nur, was ein Spieler sehen darf.
+- `poker/simulation.py` spielt mit den Regeln aus `live.py`, speichert in
+  `simulation.db` (inkl. aller Handkarten), Stacks jede Hand 100 BB.
+- Zufalls-Bot: gleichverteilt ueber `erlaubte_aktionen`, Raise halber Pot/Pot/All-in.
+  Equity-Bot: nur Equity gegen zufaellige Gegnerhaende, keine Profile.
+- `bewerte_hand` ist die schnelle Version; `bewerte_hand_einfach` bleibt als
+  Referenz und wird in den Tests an Zufallshaenden verglichen.
 
 ## Kartendarstellung (verbindlich)
 Karte = Tupel `(rang, farbe)`, `rang` 2..14 (11 Bube, 12 Dame, 13 Koenig, 14 Ass),
@@ -38,12 +79,15 @@ Variante testen.
 
 ## Fahrplan
 1. Karten, Deck, Handbewertung (erledigt)
-2. Equity per Monte-Carlo (Referenz: AA vs KK preflop heads-up ca. 82 %)
-3. Spielerprofile & Statistiken (SQLite)
-4. Spiel-Simulation mit Bots (inkl. Zufalls-Bot)
+2. Equity per Monte-Carlo, Standard 10000 Durchlaeufe (erledigt; Referenz AA vs KK ca. 82 %)
+3. Spielerprofile & Statistiken (SQLite) + Live-Eingabe (`poker/live.py`) fertig
+4. Spiel-Simulation mit Bots (erledigt: Zufalls-Bot, Equity-Bot, `simulation.db`)
 5. KI: Spielertypen erkennen, Gegenstrategie
 6. Oberflaeche: erst CLI, spaeter Web-App
 
 ## Befehle
 - Tests: `python -m pytest`
 - Demo: `python cli.py` oder `python cli.py 42` (fester Seed)
+- Live-Modus: `python cli.py live` (Datenbank `heimrunde.db`)
+- Simulation: `python cli.py sim 1000 zufall,equity,equity 42` (Haende, Bots, Seed)
+- Web-App: `python server.py`, dann auf dem iPhone `http://<IP-des-PCs>:8000`
