@@ -220,3 +220,13 @@ def test_showdown_statistik():
     ben = showdown_statistik(db, "Ben")
     assert ben["flop_gesehen"] == 2 and ben["wsd"] == 1.0 and ben["river_bets"] == 0
     assert ben["bluff_anteil"] is None
+
+
+def test_statistik_zaehlt_tischgroessen(db):
+    for namen in [["Anna", "Ben"], ["Anna", "Ben", "Clara"], ["Anna", "Ben", "Clara"]]:
+        hand_id = neue_hand(db, namen, 1, 2)
+        hand_abschliessen(db, hand_id)
+    offen = neue_hand(db, ["Anna", "Ben", "Clara", "Dora"], 1, 2)   # nicht abgeschlossen
+    assert offen
+    assert berechne_statistik(db, "Anna")["tischgroessen"] == {2: 1, 3: 2}
+    assert berechne_statistik(db, "Clara")["tischgroessen"] == {3: 2}

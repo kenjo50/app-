@@ -342,6 +342,8 @@ def berechne_statistik(verbindung, name, ab_hand_id=0):
     - "bb_pro_100": Gewinn in Big Blinds pro 100 Haende
     - "aggressiv", "calls": Anzahl bets/raises bzw. calls nach dem Flop
       (Rohzahlen, z. B. fuer die KI)
+    - "tischgroessen": {spieler_am_tisch: haende}, z. B. {6: 80, 5: 20}
+      (die Typ-Erkennung vergleicht mit den passenden Prototypen)
 
     Werte, die sich (noch) nicht berechnen lassen, sind None.
     """
@@ -402,8 +404,19 @@ def berechne_statistik(verbindung, name, ab_hand_id=0):
         abgerechnet = abgerechnet + 1
         summe_bb = summe_bb + (gewonnen - investiert) / big_blind
 
+    # Wie viele seiner Haende wurden mit wie vielen Spielern gespielt? {anzahl: haende}
+    tischgroessen = {}
+    for anzahl, zahl in verbindung.execute(
+        "SELECT (SELECT COUNT(*) FROM teilnehmer t2 WHERE t2.hand_id = t.hand_id) AS anzahl, "
+        "COUNT(*) FROM teilnehmer t JOIN haende h ON t.hand_id = h.id "
+        "WHERE t.spieler_id = ? AND h.abgeschlossen = 1 AND h.id >= ? GROUP BY anzahl",
+        (sid, ab_hand_id),
+    ):
+        tischgroessen[anzahl] = zahl
+
     statistik = {"haende": haende, "vpip": None, "pfr": None, "af": None,
-                 "bb_pro_100": None, "aggressiv": aggressiv, "calls": calls}
+                 "bb_pro_100": None, "aggressiv": aggressiv, "calls": calls,
+                 "tischgroessen": tischgroessen}
     if haende > 0:
         statistik["vpip"] = vpip_haende / haende
         statistik["pfr"] = pfr_haende / haende

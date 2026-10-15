@@ -5,9 +5,12 @@ import random
 from poker.deck import lies_karten
 from poker.ki import (
     PROTOTYPEN,
+    PROTOTYPEN_NACH_GROESSE,
+    abstand,
     aggressions_anteil,
     erkenne_typ,
     ki_entscheidung,
+    prototypen_fuer,
     schaetze_bereich,
 )
 
@@ -30,6 +33,56 @@ SICHER = {"felsen": {"typ": "felsen", "sicherheit": 0.9},
 
 
 # ---------- Typ-Erkennung ----------
+
+
+def test_prototypen_fuer_jede_tischgroesse():
+    assert set(PROTOTYPEN_NACH_GROESSE) == set(range(2, 10))
+    for prototypen in PROTOTYPEN_NACH_GROESSE.values():
+        assert set(prototypen) == {"felsen", "station", "maniac", "tag"}
+        for werte in prototypen.values():
+            assert all(0 <= w <= 1 for w in werte)
+            assert werte[1] <= werte[0]   # PFR nie groesser als VPIP
+
+
+def test_prototypen_fuer_tischgroessen():
+    assert prototypen_fuer(None) == PROTOTYPEN
+    assert prototypen_fuer({}) == PROTOTYPEN
+    assert prototypen_fuer({3: 50}) == {t: tuple(round(w, 3) for w in v)
+                                        for t, v in PROTOTYPEN_NACH_GROESSE[3].items()}
+    # Groessen ausserhalb der Messung wie die naechste gemessene
+    assert prototypen_fuer({10: 5}) == prototypen_fuer({9: 5})
+    # Mischung 75 % / 25 %
+    gemischt = prototypen_fuer({2: 30, 6: 10})
+    erwartet = 0.75 * PROTOTYPEN_NACH_GROESSE[2]["maniac"][0] + 0.25 * PROTOTYPEN_NACH_GROESSE[6]["maniac"][0]
+    assert abs(gemischt["maniac"][0] - erwartet) < 0.001
+
+
+def test_wenige_aktionen_zaehlen_weniger():
+    prototyp = (0.10, 0.07, 0.70)
+    werte = (0.10, 0.07, 1.0)
+    # Aggression 100 % aus 3 Aktionen ist kaum aussagekraeftig, aus 300 sehr wohl
+    assert abstand(werte, prototyp, (200, 200, 3)) < abstand(werte, prototyp, (200, 200, 300))
+    assert abstand(werte, prototyp, (200, 200, 300)) < abstand(werte, prototyp)
+
+
+def test_felsen_mit_wenig_flops_bleibt_felsen():
+    # Heads-up: Felsen, der nur 3-mal nach dem Flop gehandelt hat (alles Bets)
+    vpip, pfr, _ = PROTOTYPEN_NACH_GROESSE[2]["felsen"]
+    s = statistik(vpip, pfr, 1.0, 200, aktionen=3)
+    s["tischgroessen"] = {2: 200}
+    assert erkenne_typ(s)["typ"] == "felsen"
+
+
+def test_erkennung_nutzt_die_tischgroesse():
+    # Werte genau wie der heads-up-Prototyp: mit der Tischgroesse sicherer erkannt
+    for typ in PROTOTYPEN:
+        vpip, pfr, aggression = PROTOTYPEN_NACH_GROESSE[2][typ]
+        s = statistik(vpip, pfr, aggression, 300)
+        s["tischgroessen"] = {2: 300}
+        e = erkenne_typ(s)
+        assert e["typ"] == typ
+        assert e["prototyp"] == prototypen_fuer({2: 300})[typ]
+        assert e["abstaende"][typ] < 1e-6
 
 
 def test_jeder_prototyp_wird_erkannt():
@@ -79,9 +132,14 @@ def raise_verlauf(name):
 def test_bereich_nach_typ_und_sicherheit():
     verlauf = raise_verlauf("G")
     assert schaetze_bereich(SICHER["unbekannt"], verlauf, "G", "preflop") == 20
-    assert schaetze_bereich({"typ": "felsen", "sicherheit": 1.0}, verlauf, "G", "preflop") == 7
+    felsen_pfr = PROTOTYPEN["felsen"][1] * 100
+    assert schaetze_bereich({"typ": "felsen", "sicherheit": 1.0}, verlauf, "G", "preflop") \
+        == round(felsen_pfr, 1)
     halb = schaetze_bereich({"typ": "felsen", "sicherheit": 0.5}, verlauf, "G", "preflop")
-    assert halb == 13.5   # vorsichtig: halb Typ, halb Standard
+    assert halb == round((felsen_pfr + 20) / 2, 1)   # vorsichtig: halb Typ, halb Standard
+    # Mit dem Prototyp aus der Erkennung (passend zur Tischgroesse)
+    erkennung = {"typ": "maniac", "sicherheit": 1.0, "prototyp": (0.4, 0.25, 0.8)}
+    assert schaetze_bereich(erkennung, verlauf, "G", "preflop") == 25
 
 
 def test_bereich_ohne_freiwillige_aktion():

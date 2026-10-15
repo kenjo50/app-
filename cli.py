@@ -38,6 +38,7 @@ from poker.live import (
     zu_callen,
 )
 from poker.ki import erkenne_typ
+from poker.messung import als_python, miss_tischgroesse
 from poker.profile import berechne_statistik, naechste_hand_id, oeffne_datenbank
 from poker.simulation import STANDARD_DATENBANK as SIMULATIONS_DATENBANK
 from poker.simulation import oeffne_simulationsdatenbank, simuliere
@@ -439,9 +440,28 @@ def simulations_modus(argumente):
             print(f"   {name:<10} -> {e['typ']:<10} Sicherheit {e['sicherheit'] * 100:3.0f} %")
 
 
+def mess_modus(argumente):
+    """python cli.py messen [haende pro tischgroesse] [seed]
+
+    Misst die Prototypen fuer 2 bis 9 Spieler und gibt sie zum Einfuegen
+    in poker/ki.py aus (PROTOTYPEN_NACH_GROESSE).
+    """
+    anzahl = int(argumente[0]) if len(argumente) > 0 else 6000
+    seed = int(argumente[1]) if len(argumente) > 1 else 100
+    messungen = {}
+    for spieler in range(2, 10):
+        print(f"{spieler} Spieler am Tisch ...", flush=True)
+        messungen[spieler] = miss_tischgroesse(spieler, anzahl, seed + spieler)
+    print()
+    print("In poker/ki.py einfuegen:")
+    print(als_python(messungen))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "sim":
         simulations_modus(sys.argv[2:])
+    elif len(sys.argv) > 1 and sys.argv[1] == "messen":
+        mess_modus(sys.argv[2:])
     elif len(sys.argv) > 1 and sys.argv[1] == "live":
         if len(sys.argv) > 2:
             live_modus(sys.argv[2])

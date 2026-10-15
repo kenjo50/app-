@@ -27,14 +27,61 @@ HAENDE_HALBE_SICHERHEIT = 50  # bei so vielen Haenden ist die Datenlage "halb si
 KI_DURCHLAEUFE = 300
 PROFIL_AKTUALISIEREN = 20  # nach so vielen Entscheidungen werden Profile neu gelesen
 
-# Typische Werte der Grundtypen: (VPIP, PFR, Aggression), gemessen in
-# 3 x 1500 simulierten Haenden mit den Typ-Bots (poker/typen.py), 6 Spieler am Tisch.
-PROTOTYPEN = {
-    "felsen":  (0.10, 0.07, 0.72),
-    "station": (0.45, 0.04, 0.19),
-    "maniac":  (0.49, 0.32, 0.86),
-    "tag":     (0.16, 0.11, 0.78),
+# Typische Werte der Grundtypen: (VPIP, PFR, Aggression) je Tischgroesse,
+# gemessen mit den Typ-Bots (poker/typen.py) in poker/messung.py,
+# 6000 Haende pro Tischgroesse. Neu messen: python cli.py messen
+PROTOTYPEN_NACH_GROESSE = {
+    2: {
+        "felsen": (0.07, 0.05, 0.75),
+        "station": (0.31, 0.04, 0.29),
+        "maniac": (0.39, 0.27, 0.85),
+        "tag": (0.12, 0.09, 0.86),
+    },
+    3: {
+        "felsen": (0.08, 0.06, 0.72),
+        "station": (0.43, 0.04, 0.27),
+        "maniac": (0.50, 0.35, 0.85),
+        "tag": (0.17, 0.12, 0.84),
+    },
+    4: {
+        "felsen": (0.09, 0.06, 0.79),
+        "station": (0.47, 0.05, 0.25),
+        "maniac": (0.54, 0.35, 0.80),
+        "tag": (0.16, 0.12, 0.82),
+    },
+    5: {
+        "felsen": (0.08, 0.06, 0.72),
+        "station": (0.49, 0.04, 0.20),
+        "maniac": (0.54, 0.33, 0.79),
+        "tag": (0.16, 0.12, 0.78),
+    },
+    6: {
+        "felsen": (0.09, 0.06, 0.73),
+        "station": (0.49, 0.04, 0.19),
+        "maniac": (0.52, 0.33, 0.77),
+        "tag": (0.16, 0.12, 0.78),
+    },
+    7: {
+        "felsen": (0.08, 0.05, 0.70),
+        "station": (0.51, 0.04, 0.18),
+        "maniac": (0.55, 0.31, 0.73),
+        "tag": (0.16, 0.11, 0.75),
+    },
+    8: {
+        "felsen": (0.08, 0.05, 0.65),
+        "station": (0.53, 0.04, 0.15),
+        "maniac": (0.53, 0.30, 0.74),
+        "tag": (0.16, 0.11, 0.76),
+    },
+    9: {
+        "felsen": (0.08, 0.05, 0.68),
+        "station": (0.52, 0.04, 0.15),
+        "maniac": (0.53, 0.30, 0.73),
+        "tag": (0.16, 0.11, 0.73),
+    },
 }
+STANDARD_GROESSE = 6
+PROTOTYPEN = PROTOTYPEN_NACH_GROESSE[STANDARD_GROESSE]
 # Wie stark Unterschiede in den drei Werten zaehlen (Grund-Streuung der Messwerte)
 SKALEN = (0.05, 0.04, 0.12)
 
@@ -60,36 +107,73 @@ def aggressions_anteil(statistik):
     return statistik["aggressiv"] / aktiv
 
 
-def abstand(werte, prototyp):
+def abstand(werte, prototyp, anzahlen=None):
     """Abstand zwischen gemessenen Werten und einem Prototyp (0 = genau gleich).
 
     Jeder Unterschied wird durch eine "erlaubte Abweichung" geteilt. Bei VPIP
     und PFR waechst sie mit dem Wert: 45 % VPIP schwankt mehr als 10 %.
+    anzahlen: auf wie vielen Haenden/Aktionen jeder Wert beruht. Je weniger,
+    desto mehr Zufall steckt im Wert und desto mehr Abweichung ist erlaubt
+    (3 Aktionen nach dem Flop sagen fast nichts ueber die Aggression).
     """
     summe = 0.0
     for i in range(3):
         if werte[i] is None:
             continue  # fehlender Wert (z. B. noch nie nach dem Flop gehandelt)
         erlaubt = SKALEN[i] + (0.2 * prototyp[i] if i < 2 else 0)
+        if anzahlen is not None and anzahlen[i]:
+            # Zufallsschwankung eines Anteils bei n Versuchen: p * (1 - p) / n
+            p = prototyp[i]
+            erlaubt = math.sqrt(erlaubt ** 2 + p * (1 - p) / anzahlen[i])
         summe = summe + ((werte[i] - prototyp[i]) / erlaubt) ** 2
     return math.sqrt(summe)
+
+
+def prototypen_fuer(tischgroessen):
+    """Prototypen passend zu den Tischgroessen, an denen ein Spieler gespielt hat.
+
+    tischgroessen: {spieler_am_tisch: haende}, z. B. {6: 80, 3: 20}.
+    Ergebnis: Mittelwert der gemessenen Prototypen, gewichtet mit den Haenden
+    (hier 80 % die Werte vom 6er-Tisch, 20 % die vom 3er-Tisch).
+    Groessen ausserhalb der Messung zaehlen wie die naechste gemessene.
+    Ohne Angabe: die Werte vom 6er-Tisch.
+    """
+    if not tischgroessen:
+        return PROTOTYPEN
+    kleinste, groesste = min(PROTOTYPEN_NACH_GROESSE), max(PROTOTYPEN_NACH_GROESSE)
+    gesamt = sum(tischgroessen.values())
+    ergebnis = {}
+    for typ in PROTOTYPEN:
+        summe = [0.0, 0.0, 0.0]
+        for anzahl, haende in tischgroessen.items():
+            werte = PROTOTYPEN_NACH_GROESSE[min(groesste, max(kleinste, int(anzahl)))][typ]
+            for i in range(3):
+                summe[i] += werte[i] * haende / gesamt
+        ergebnis[typ] = tuple(round(wert, 3) for wert in summe)
+    return ergebnis
 
 
 def erkenne_typ(statistik):
     """Ordnet einem Spieler einen Grundtyp zu.
 
     statistik: Ergebnis von berechne_statistik.
+    Verglichen wird mit den Prototypen der Tischgroessen, an denen er gespielt
+    hat (statistik["tischgroessen"], siehe prototypen_fuer).
+
     Rueckgabe: {"typ": "felsen"/.../"unbekannt", "sicherheit": 0..1,
-                "haende": n, "abstaende": {typ: abstand}}
+                "haende": n, "abstaende": {typ: abstand},
+                "prototyp": (vpip, pfr, aggression) des erkannten Typs}
     """
     haende = statistik["haende"]
     if haende < MINDEST_HAENDE or statistik["vpip"] is None:
         return {"typ": "unbekannt", "sicherheit": 0.0, "haende": haende, "abstaende": {}}
 
     werte = (statistik["vpip"], statistik["pfr"], aggressions_anteil(statistik))
+    prototypen = prototypen_fuer(statistik.get("tischgroessen"))
+    anzahlen = (haende, haende, statistik["aggressiv"] + statistik["calls"])
     abstaende = {}
-    for typ, prototyp in PROTOTYPEN.items():
-        abstaende[typ] = abstand(werte, prototyp)
+    for typ, prototyp in prototypen.items():
+        abstaende[typ] = abstand(werte, prototyp, anzahlen)
     sortiert = sorted(abstaende, key=abstaende.get)
     bester, zweiter = sortiert[0], sortiert[1]
 
@@ -102,7 +186,7 @@ def erkenne_typ(statistik):
 
     sicherheit = daten * (0.5 + 0.5 * trennung) * passung
     return {"typ": bester, "sicherheit": round(sicherheit, 3), "haende": haende,
-            "abstaende": abstaende}
+            "abstaende": abstaende, "prototyp": prototypen[bester]}
 
 
 # ---------------- Teil B: Gegnerbereiche ----------------
@@ -133,7 +217,8 @@ def schaetze_bereich(erkennung, verlauf, gegner, strasse):
     sicherheit = erkennung["sicherheit"]
     standard = STANDARD_BEREICH[art]
     if typ in PROTOTYPEN and art != "nichts":
-        vpip, pfr, aggression = PROTOTYPEN[typ]
+        # Prototyp passend zu seinen Tischgroessen (aeltere Erkennungen: 6er-Tisch)
+        vpip, pfr, aggression = erkennung.get("prototyp") or PROTOTYPEN[typ]
         typ_bereich = pfr * 100 if art == "raise" else vpip * 100
         prozent = _mische(typ_bereich, standard, sicherheit)
     else:
