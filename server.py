@@ -33,8 +33,9 @@ from poker import clock as clockmodul
 from poker import kasse, turnier
 from poker import berater
 from poker import tisch as tischmodul
+from poker import wartung
 from poker.deck import lies_karten
-from poker.profile import oeffne_datenbank, spieler_namen
+from poker.profile import anzahl_abgebrochene, oeffne_datenbank, spieler_namen
 
 STANDARD_DATENBANK = "heimrunde.db"
 PROJEKT_ORDNER = Path(__file__).parent
@@ -62,6 +63,9 @@ def erstelle_app(datenbank_pfad, uhr=time.time, entwicklung=False):
 
     def datenbank():
         return oeffne_datenbank(datenbank_pfad)
+
+    # Bei jedem Start eine Sicherung der Datenbank anlegen (die letzten 30 bleiben)
+    wartung.sicherung_anlegen(datenbank_pfad)
 
     # Einen gespeicherten Abend nach einem Neustart wieder aufnehmen
     db = datenbank()
@@ -455,6 +459,57 @@ def erstelle_app(datenbank_pfad, uhr=time.time, entwicklung=False):
             return tischmodul.spieler_statistik(db, name)
         finally:
             db.close()
+
+    # ---------------- Wartung: Sicherung und Aufraeumen ----------------
+
+    def laufende_hand_id():
+        if tisch["abend"] is None or tisch["abend"]["hand"] is None:
+            return None
+        return tisch["abend"]["hand"]["zustand"]["hand_id"]
+
+    def wartung_uebersicht(db):
+        abgebrochene = anzahl_abgebrochene(db) - (1 if laufende_hand_id() else 0)
+        return {
+            "sicherungen": wartung.sicherungen_liste(datenbank_pfad),
+            "spieler": wartung.spieler_uebersicht(db),
+            "abende": kasse.abende_liste(db),
+            "abgebrochene": abgebrochene,
+        }
+
+    @app.get("/api/wartung")
+    def wartung_zeigen():
+        return mit_db(wartung_uebersicht)
+
+    @app.post("/api/wartung/sicherung")
+    def wartung_sichern():
+        kopie = wartung.sicherung_anlegen(datenbank_pfad)
+        return {"name": None if kopie is None else kopie.name}
+
+    @app.get("/api/wartung/spieler/{name}")
+    def wartung_spieler_vorschau(name: str):
+        return mit_db(wartung.spieler_loeschvorschau, name)
+
+    @app.delete("/api/wartung/spieler/{name}")
+    def wartung_spieler_loeschen(name: str):
+        live_spieler = [] if tisch["abend"] is None else tisch["abend"]["spieler"]
+        with sperre:
+            wartung.sicherung_anlegen(datenbank_pfad)   # vor dem Loeschen immer sichern
+            haende = mit_db(wartung.spieler_loeschen, name, live_spieler)
+        return {"geloescht_haende": haende, "wartung": mit_db(wartung_uebersicht)}
+
+    @app.delete("/api/wartung/abend/{abend_id}")
+    def wartung_abend_loeschen(abend_id: int):
+        with sperre:
+            wartung.sicherung_anlegen(datenbank_pfad)
+            mit_db(wartung.abend_loeschen, abend_id)
+        return {"wartung": mit_db(wartung_uebersicht)}
+
+    @app.delete("/api/wartung/abgebrochene")
+    def wartung_abgebrochene_loeschen():
+        with sperre:
+            wartung.sicherung_anlegen(datenbank_pfad)
+            anzahl = mit_db(wartung.abgebrochene_haende_loeschen, laufende_hand_id())
+        return {"geloescht_haende": anzahl, "wartung": mit_db(wartung_uebersicht)}
 
     # ---------------- Entwicklungsmodus ----------------
 

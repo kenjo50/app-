@@ -232,7 +232,7 @@ $("steuergeraet").addEventListener("change", () => {
 
 // ---------------- Tabs ----------------
 
-const TABS = ["hand", "timer", "clock", "struktur", "turnier", "cash", "bilanz"];
+const TABS = ["hand", "timer", "clock", "struktur", "turnier", "cash", "bilanz", "daten"];
 
 function zeigeTab(name) {
   for (const tab of TABS) {
@@ -245,6 +245,7 @@ function zeigeTab(name) {
   if (name === "turnier") ladeTurnier();
   if (name === "cash") ladeCash();
   if (name === "bilanz") ladeBilanz();
+  if (name === "daten") ladeDaten();
   // ladeLive kommt aus live.js, das erst nach app.js geladen wird
   if (name === "hand" && typeof ladeLive === "function") ladeLive();
   if (name === "struktur" && struktur.length === 0) strukturAusVorlage();
@@ -801,6 +802,77 @@ async function ladeBilanz() {
     '<tr><td colspan="5" class="klein">Noch keine abgeschlossenen Abende.</td></tr>';
 }
 $("b-art").addEventListener("change", ladeBilanz);
+
+// ---------------- Daten: Sicherung und Aufraeumen ----------------
+
+async function ladeDaten() {
+  zeichneDaten(await api("/api/wartung"));
+}
+
+function zeichneDaten(w) {
+  $("d-sicherungen").innerHTML = w.sicherungen.length
+    ? `${w.sicherungen.length} Sicherung(en), neueste: ${esc(w.sicherungen[0].name)}`
+    : "Noch keine Sicherung.";
+  $("d-spieler").querySelector("tbody").innerHTML = w.spieler.map((s) =>
+    `<tr><td>${esc(s.name)}</td><td class="zahl">${s.haende} Hände</td>
+     <td class="zahl">${s.abende} Abende</td>
+     <td><button class="klein-knopf gefahr" data-spieler-weg="${esc(s.name)}">Löschen</button></td></tr>
+     <tr hidden data-vorschau="${esc(s.name)}"><td colspan="4" class="klein"></td></tr>`
+  ).join("") || '<tr><td class="klein">Keine Spieler.</td></tr>';
+  $("d-abende").querySelector("tbody").innerHTML = w.abende.map((a) =>
+    `<tr><td>${a.art === "turnier" ? "Turnier" : "Cash"}</td><td>${esc(a.name || "–")}</td>
+     <td>${esc(a.zeitpunkt.slice(0, 10))}${a.beendet ? "" : " (offen)"}</td>
+     <td><button class="klein-knopf gefahr" data-abend-weg="${a.id}">Löschen</button></td></tr>`
+  ).join("") || '<tr><td class="klein">Keine Abende.</td></tr>';
+  $("d-abgebrochen").innerHTML = w.abgebrochene > 0
+    ? `${w.abgebrochene} abgebrochene Hand/Hände (zählen nicht in der Statistik)
+       <button class="klein-knopf gefahr" id="d-abgebrochen-weg">Wegräumen</button>`
+    : "Keine abgebrochenen Hände.";
+}
+
+$("d-sichern").addEventListener("click", async () => {
+  const antwort = await api("/api/wartung/sicherung", "POST");
+  meldung(antwort.name ? "Gesichert: " + antwort.name : "Noch keine Datenbank-Datei", true);
+  ladeDaten();
+});
+
+$("tab-daten").addEventListener("click", async (e) => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  if (b.dataset.spielerWeg) {
+    const name = b.dataset.spielerWeg;
+    if (b.dataset.sicher !== "1") {
+      // Erstes Tippen: anzeigen, was alles verschwinden wuerde
+      const v = await api("/api/wartung/spieler/" + encodeURIComponent(name));
+      const zeile = document.querySelector(`tr[data-vorschau="${CSS.escape(name)}"]`);
+      zeile.hidden = false;
+      if (v.abende.length) {
+        zeile.firstElementChild.textContent = `${name} steht noch in ${v.abende.length} Abend/Abenden ` +
+          "(Turnier/Cash) – bitte zuerst diese(n) Abend unten löschen.";
+        return;
+      }
+      zeile.firstElementChild.textContent = `Löscht ${v.haende} Hand/Hände` +
+        (v.mitspieler.length ? ` (auch für ${v.mitspieler.join(", ")})` : "") + ".";
+    }
+    if (!bestaetigt(b, "Wirklich löschen?")) return;
+    const antwort = await api("/api/wartung/spieler/" + encodeURIComponent(name), "DELETE");
+    zeichneDaten(antwort.wartung);
+    ladeSpielerliste();
+    return meldung(`${name} gelöscht (${antwort.geloescht_haende} Hände)`, true);
+  }
+  if (b.dataset.abendWeg) {
+    if (!bestaetigt(b, "Wirklich löschen?")) return;
+    const antwort = await api("/api/wartung/abend/" + b.dataset.abendWeg, "DELETE");
+    zeichneDaten(antwort.wartung);
+    return meldung("Abend gelöscht", true);
+  }
+  if (b.id === "d-abgebrochen-weg") {
+    if (!bestaetigt(b, "Wirklich wegräumen?")) return;
+    const antwort = await api("/api/wartung/abgebrochene", "DELETE");
+    zeichneDaten(antwort.wartung);
+    return meldung(`${antwort.geloescht_haende} abgebrochene Hände entfernt`, true);
+  }
+});
 
 // ---------------- Entwicklungsmodus ----------------
 // Laeuft der Server mit --entwicklung, fragt die Seite jede Sekunde nach, ob sich

@@ -17,3 +17,6 @@ Thumbs.db
 # Datenbank (spaeter, enthaelt echte Spieldaten)
 *.sqlite
 *.db
+
+# Datenbank-Sicherungen
+sicherungen/

@@ -262,3 +262,6 @@ body:has(#lt-aktionen:not([hidden])) main { padding-bottom: 110px; }
 /* Entwicklungsmodus: kleines Schild, damit man es nicht verwechselt */
 body.entwicklung::after { content: "ENTWICKLUNG"; position: fixed; right: 8px; top: 8px; z-index: 50;
   background: #7c3aed; color: #fff; font-size: 0.7rem; padding: 3px 8px; border-radius: 6px; }
+
+/* Reiter "Daten": Zahlen nicht umbrechen */
+#d-spieler td.zahl, #d-abende td { white-space: nowrap; }

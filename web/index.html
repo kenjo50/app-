@@ -32,6 +32,7 @@
   <button data-tab="turnier">Turnier</button>
   <button data-tab="cash">Cash</button>
   <button data-tab="bilanz">Bilanz</button>
+  <button data-tab="daten">Daten</button>
 </nav>
 
 <!-- Clock-Banner: auf jedem Tab sichtbar, solange ein Clock läuft -->
@@ -223,6 +224,24 @@
       <tbody></tbody>
     </table>
     <p class="klein">Nur abgeschlossene Abende zählen.</p>
+  </section>
+  <!-- ============ Daten: Sicherung und Aufraeumen ============ -->
+  <section id="tab-daten" hidden>
+    <h2>Sicherungen</h2>
+    <p class="klein">Beim Start des Servers und vor jedem Löschen wird automatisch gesichert
+      (die letzten 30 bleiben, im Ordner „sicherungen“ neben der Datenbank).</p>
+    <button id="d-sichern">Jetzt sichern</button>
+    <div id="d-sicherungen" class="klein"></div>
+
+    <h2>Spieler</h2>
+    <p class="klein">Löschen entfernt den Spieler mit allen Händen, in denen er mitgespielt hat.</p>
+    <table id="d-spieler"><tbody></tbody></table>
+
+    <h2>Abende (Turnier / Cash Game)</h2>
+    <table id="d-abende"><tbody></tbody></table>
+
+    <h2>Abgebrochene Hände</h2>
+    <p id="d-abgebrochen"></p>
   </section>
 </main>
 

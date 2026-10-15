@@ -74,6 +74,14 @@ und schlaegt sie einen Zufalls-Bot? Messung in bb/100 ueber viele Haende.
 - Web: Knopf "KI" zwischen den Haenden, Kartenraster fuer die Heldenkarten,
   Empfehlungs-Kasten mit "Uebernehmen" (traegt die Aktion normal ein).
 
+## Sicherung und Aufraeumen (Reiter "Daten")
+- `poker/wartung.py`: Sicherung per SQLite-backup in `sicherungen/` neben der DB
+  (beim Serverstart und vor jedem Loeschen, die letzten 30 bleiben).
+- Spieler loeschen entfernt alle Haende, in denen er spielte (komplett, auch fuer
+  Mitspieler); steht er in einem Turnier/Cash Game, muss erst der Abend weg;
+  Spieler am laufenden Live-Abend sind geschuetzt. Abende und abgebrochene Haende
+  (ausser der laufenden) lassen sich ebenfalls loeschen.
+
 ## Simulation und Bots
 - Bot = Funktion `bot(sicht, zufall) -> (grundaktion, betrag)`; die Sicht
   (`erstelle_sicht` in `poker/bots.py`) enthaelt nur, was ein Spieler sehen darf.
