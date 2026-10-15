@@ -278,3 +278,45 @@ def test_entwicklungsmodus_nur_wenn_eingeschaltet(tmp_path, uhr):
     entwicklung = TestClient(erstelle_app(str(tmp_path / "b.db"), uhr, entwicklung=True))
     stand = entwicklung.get("/api/entwicklung/stand").json()
     assert stand["start"] > 0 and stand["web"] > 0
+
+
+# ---------- Wartung: Sicherung und Aufraeumen ----------
+
+
+def test_sicherung_beim_start_und_manuell(tmp_path, uhr):
+    pfad = tmp_path / "heim.db"
+    erster = TestClient(erstelle_app(str(pfad), uhr))     # legt die Datei erst an
+    erster.post("/api/cash", json={"name": "x"})
+    zweiter = TestClient(erstelle_app(str(pfad), uhr))    # Start mit vorhandener Datei
+    assert len(zweiter.get("/api/wartung").json()["sicherungen"]) == 1
+    assert zweiter.post("/api/wartung/sicherung").json()["name"].startswith("heim_")
+
+
+def test_testspieler_aufraeumen(client):
+    c = client.post("/api/cash", json={}).json()["id"]
+    client.post(f"/api/cash/{c}/buyin", json={"name": "Test"})
+    vorschau = client.get("/api/wartung/spieler/Test").json()
+    assert vorschau["abende"][0]["id"] == c
+    antwort = client.delete("/api/wartung/spieler/Test")
+    assert antwort.status_code == 400 and "Abend" in antwort.json()["detail"]
+    client.delete(f"/api/wartung/abend/{c}")
+    w = client.delete("/api/wartung/spieler/Test").json()["wartung"]
+    assert [s["name"] for s in w["spieler"]] == []
+    assert w["abende"] == []
+
+
+def test_abgebrochene_haende_ueber_server(client):
+    abend_starten(client)
+    client.post("/api/abend/hand")
+    client.post("/api/abend/abbrechen")
+    client.post("/api/abend/hand")                    # laeuft gerade
+    assert client.get("/api/wartung").json()["abgebrochene"] == 1
+    antwort = client.delete("/api/wartung/abgebrochene").json()
+    assert antwort["geloescht_haende"] == 1
+    # Die laufende Hand ist noch spielbar
+    assert client.post("/api/abend/aktion", json={"aktion": "fold"}).status_code == 200
+
+
+def test_live_spieler_nicht_loeschen(client):
+    abend_starten(client)
+    assert client.delete("/api/wartung/spieler/Anna").status_code == 400
