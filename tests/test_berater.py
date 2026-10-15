@@ -107,3 +107,45 @@ def test_profile_aus_der_datenbank_werden_genutzt(db):
     typen = {g["name"]: g["typ"] for g in e["gegner"]}
     assert typen["Station 1"] == "station"
     assert any("Station 1: Calling Station" in g for g in e["gruende"])
+
+
+# ---------- Protokoll: befolgt oder nicht? ----------
+
+
+def protokoll(db):
+    return db.execute("SELECT empfohlen, gespielt, befolgt, strasse FROM empfehlungen").fetchall()
+
+
+def test_befolgte_empfehlung_wird_protokolliert(db):
+    abend = hand_mit_held(db, "Clara", "As Ah")
+    e = empfehlung(db, abend, durchlaeufe=300)
+    tisch.aktion(db, abend, "raise", e["betrag"])     # wie empfohlen
+    assert protokoll(db) == [("raise", "raise", 1, "preflop")]
+
+
+def test_nicht_befolgte_empfehlung(db):
+    abend = hand_mit_held(db, "Clara", "As Ah")
+    empfehlung(db, abend, durchlaeufe=300)
+    tisch.aktion(db, abend, "call")                   # anders als empfohlen
+    assert protokoll(db) == [("raise", "call", 0, "preflop")]
+
+
+def test_rueckgaengig_entfernt_protokoll(db):
+    abend = hand_mit_held(db, "Clara", "As Ah")
+    empfehlung(db, abend, durchlaeufe=300)
+    tisch.aktion(db, abend, "call")
+    tisch.rueckgaengig(db, abend)
+    assert protokoll(db) == []
+
+
+def test_ohne_empfehlung_oder_veraltet_kein_protokoll(db):
+    abend = hand_mit_held(db, "Ben", "As Ah")
+    tisch.aktion(db, abend, "call")                   # Clara, nicht der Held
+    tisch.aktion(db, abend, "call")                   # Anna
+    tisch.aktion(db, abend, "check")                  # Ben ohne angezeigte Empfehlung
+    assert protokoll(db) == []
+    tisch.board_karten(db, abend, lies_karten("Ks 9h 4d"))
+    tisch.aktion(db, abend, "check")                  # Anna
+    e = empfehlung(db, abend, durchlaeufe=300)        # fuer Ben auf dem Flop
+    tisch.aktion(db, abend, "check")                  # Ben
+    assert protokoll(db) == [(e["aktion"], "check", int(e["aktion"] == "check"), "flop")]

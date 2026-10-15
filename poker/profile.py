@@ -18,6 +18,7 @@ Tabellen:
 - abende:      ein Turnier oder Cash Game (Buy-in-Betraege, Auszahlungsstruktur)
 - abend_spieler: wer an einem Abend dabei ist (im Turnier mit Platzierung)
 - buchungen:   Geldbewegungen in Cent: buyin, rebuy, addon, cashout, auszahlung
+- empfehlungen: Protokoll des KI-Beraters (was empfohlen, was gespielt, befolgt?)
 - tisch_zustand: der laufende Live-Abend der Web-App (JSON), damit er einen
                Server-Neustart uebersteht
 """
@@ -25,6 +26,8 @@ Tabellen:
 import json
 import sqlite3
 from datetime import datetime
+
+from poker.bewertung import HOECHSTE_KARTE, bewerte_hand
 
 STRASSEN = ["preflop", "flop", "turn", "river"]
 AKTIONEN = ["fold", "check", "call", "bet", "raise"]
@@ -84,6 +87,19 @@ CREATE TABLE IF NOT EXISTS abend_spieler (
     spieler_id  INTEGER NOT NULL REFERENCES spieler(id),
     platz       INTEGER,
     PRIMARY KEY (abend_id, spieler_id)
+);
+CREATE TABLE IF NOT EXISTS empfehlungen (
+    id               INTEGER PRIMARY KEY,
+    hand_id          INTEGER NOT NULL REFERENCES haende(id),
+    spieler_id       INTEGER NOT NULL REFERENCES spieler(id),
+    strasse          TEXT NOT NULL,
+    empfohlen        TEXT NOT NULL,
+    empfohlen_betrag REAL,
+    gespielt         TEXT NOT NULL,
+    gespielt_betrag  REAL,
+    befolgt          INTEGER NOT NULL,
+    equity           REAL,
+    pot_odds         REAL
 );
 CREATE TABLE IF NOT EXISTS tisch_zustand (
     id      INTEGER PRIMARY KEY CHECK (id = 1),
@@ -267,6 +283,25 @@ def letzte_aktion_loeschen(verbindung, hand_id):
     verbindung.commit()
 
 
+def empfehlung_speichern(verbindung, hand_id, name, strasse, empfohlen, empfohlen_betrag,
+                         gespielt, gespielt_betrag, befolgt, equity, pot_odds):
+    """Protokolliert eine KI-Empfehlung und was tatsaechlich gespielt wurde. Gibt die id zurueck."""
+    cursor = verbindung.execute(
+        "INSERT INTO empfehlungen (hand_id, spieler_id, strasse, empfohlen, empfohlen_betrag, "
+        "gespielt, gespielt_betrag, befolgt, equity, pot_odds) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (hand_id, _teilnehmer_id(verbindung, hand_id, name), strasse, empfohlen, empfohlen_betrag,
+         gespielt, gespielt_betrag, int(befolgt), equity, pot_odds),
+    )
+    verbindung.commit()
+    return cursor.lastrowid
+
+
+def empfehlung_loeschen(verbindung, empfehlung_id):
+    """Entfernt einen Protokolleintrag (wenn die Aktion rueckgaengig gemacht wurde)."""
+    verbindung.execute("DELETE FROM empfehlungen WHERE id = ?", (empfehlung_id,))
+    verbindung.commit()
+
+
 def hand_abschliessen(verbindung, hand_id):
     """Markiert eine Hand als fertig abgerechnet. Erst dann zaehlt sie in der Statistik."""
     verbindung.execute("UPDATE haende SET abgeschlossen = 1 WHERE id = ?", (hand_id,))
@@ -377,3 +412,66 @@ def berechne_statistik(verbindung, name, ab_hand_id=0):
     if abgerechnet > 0:
         statistik["bb_pro_100"] = summe_bb / abgerechnet * 100
     return statistik
+
+
+def showdown_statistik(verbindung, name, ab_hand_id=0):
+    """Showdown- und Bluff-Werte eines Spielers (nur abgeschlossene Haende).
+
+    - "flop_gesehen": Haende, in denen er vor dem Flop nicht gefoldet hat und
+      ein Flop kam
+    - "wtsd":  Anteil davon, die bis zum Showdown gingen (went to showdown)
+    - "wsd":   Anteil der Showdowns, bei denen er etwas gewonnen hat (won at showdown)
+    - "river_bets": seine Bets/Raises auf dem River, die zum Showdown kamen
+    - "bluffs": davon Bluffs = am Ende nur "hoechste Karte" gezeigt, oder
+      verloren und keine Karten gezeigt
+    - "bluff_anteil": bluffs / river_bets
+    Bluffs, bei denen der Gegner aufgegeben hat, sieht man nie - der Wert ist
+    deshalb eine Untergrenze. Nicht berechenbare Anteile sind None.
+    """
+    zeile = verbindung.execute("SELECT id FROM spieler WHERE name = ?", (name,)).fetchone()
+    if zeile is None:
+        raise ValueError(f"Unbekannter Spieler: {name}")
+    sid = zeile[0]
+    flop_gesehen = showdowns = gewonnen_sd = river_bets = bluffs = 0
+    for hand_id, board_text, handkarten_text, gewonnen in verbindung.execute(
+        "SELECT h.id, h.board, t.handkarten, t.gewonnen FROM teilnehmer t "
+        "JOIN haende h ON t.hand_id = h.id "
+        "WHERE t.spieler_id = ? AND h.abgeschlossen = 1 AND h.id >= ?", (sid, ab_hand_id)
+    ).fetchall():
+        board = text_zu_karten(board_text) or []
+        gefoldet = {}   # spieler_id -> Strasse, auf der er gefoldet hat
+        river_aggressiv = False
+        for spieler, strasse, aktion in verbindung.execute(
+            "SELECT spieler_id, strasse, aktion FROM aktionen WHERE hand_id = ? ORDER BY id",
+            (hand_id,),
+        ):
+            if aktion == "fold":
+                gefoldet[spieler] = strasse
+            if spieler == sid and strasse == "river" and aktion in ["bet", "raise"]:
+                river_aggressiv = True
+        if gefoldet.get(sid) == "preflop" or len(board) < 3:
+            continue
+        flop_gesehen += 1
+        uebrig = verbindung.execute(
+            "SELECT COUNT(*) FROM teilnehmer WHERE hand_id = ?", (hand_id,)
+        ).fetchone()[0] - len(gefoldet)
+        if sid in gefoldet or len(board) < 5 or uebrig < 2:
+            continue
+        showdowns += 1
+        if gewonnen and gewonnen > 0:
+            gewonnen_sd += 1
+        if river_aggressiv:
+            river_bets += 1
+            karten = text_zu_karten(handkarten_text)
+            if karten:
+                if bewerte_hand(karten + board)[0] == HOECHSTE_KARTE:
+                    bluffs += 1
+            elif not gewonnen:
+                bluffs += 1
+
+    def anteil(zaehler, nenner):
+        return zaehler / nenner if nenner else None
+
+    return {"flop_gesehen": flop_gesehen, "showdowns": showdowns,
+            "wtsd": anteil(showdowns, flop_gesehen), "wsd": anteil(gewonnen_sd, showdowns),
+            "river_bets": river_bets, "bluffs": bluffs, "bluff_anteil": anteil(bluffs, river_bets)}

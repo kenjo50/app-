@@ -73,6 +73,11 @@ und schlaegt sie einen Zufalls-Bot? Messung in bb/100 ueber viele Haende.
   2000 Equity-Durchlaeufe; Raise auf zahlbare Chips (Small Blind) gerundet.
 - Web: Knopf "KI" zwischen den Haenden, Kartenraster fuer die Heldenkarten,
   Empfehlungs-Kasten mit "Uebernehmen" (traegt die Aktion normal ein).
+- Protokoll: `berater.empfehlung` merkt sich die Empfehlung samt Situation
+  (`situation_von`); handelt der Held in genau dieser Situation, schreibt
+  `tisch.aktion` eine Zeile in `empfehlungen` (befolgt ja/nein); Rueckgaengig loescht sie.
+- `profile.showdown_statistik`: WTSD, W$SD, Bluff-Anteil (River-Einsatz beim Showdown
+  mit nur "hoechster Karte" oder verloren ohne gezeigte Karten; Untergrenze).
 
 ## Sicherung und Aufraeumen (Reiter "Daten")
 - `poker/wartung.py`: Sicherung per SQLite-backup in `sicherungen/` neben der DB

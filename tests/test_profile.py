@@ -176,3 +176,47 @@ def test_alte_haende_mit_ergebnis_gelten_als_abgeschlossen(tmp_path):
     werte = verbindung.execute("SELECT id, abgeschlossen FROM haende ORDER BY id").fetchall()
     verbindung.close()
     assert werte == [(1, 1), (2, 0)]
+
+
+def test_showdown_statistik():
+    from poker import tisch
+    from poker.deck import lies_karten
+    from poker.profile import showdown_statistik
+    db = oeffne_datenbank(":memory:")
+    abend = tisch.neuer_abend(db, ["Anna", "Ben"], {"Anna": 1000, "Ben": 1000}, 10, 20)
+
+    # Hand 1: bis zum Showdown, Anna blufft auf dem River mit "hoechster Karte" und verliert
+    tisch.starte_naechste_hand(db, abend)
+    tisch.aktion(db, abend, "call")      # Anna (Small Blind)
+    tisch.aktion(db, abend, "check")     # Ben
+    for karten in ["Ks 9h 4d", "Jc", "8s"]:
+        tisch.board_karten(db, abend, lies_karten(karten))
+        tisch.aktion(db, abend, "check")                 # Ben
+        if karten == "8s":
+            tisch.aktion(db, abend, "raise", 40)         # Anna setzt auf dem River
+            tisch.aktion(db, abend, "call")              # Ben
+        else:
+            tisch.aktion(db, abend, "check")             # Anna
+    tisch.showdown_abrechnen(db, abend, {"Anna": lies_karten("7c 2d"), "Ben": lies_karten("Kh Qc")})
+
+    # Hand 2: Anna foldet vor dem Flop (zaehlt nicht als "Flop gesehen")
+    tisch.starte_naechste_hand(db, abend)
+    tisch.aktion(db, abend, "raise", 60)  # Ben
+    tisch.aktion(db, abend, "fold")       # Anna
+    tisch.abrechnen_ohne_showdown(db, abend)
+
+    # Hand 3: Anna sieht den Flop und foldet dann
+    tisch.starte_naechste_hand(db, abend)
+    tisch.aktion(db, abend, "call")       # Anna
+    tisch.aktion(db, abend, "check")      # Ben
+    tisch.board_karten(db, abend, lies_karten("Ac 5h 3d"))
+    tisch.aktion(db, abend, "raise", 20)  # Ben setzt
+    tisch.aktion(db, abend, "fold")       # Anna
+    tisch.abrechnen_ohne_showdown(db, abend)
+
+    anna = showdown_statistik(db, "Anna")
+    assert anna == {"flop_gesehen": 2, "showdowns": 1, "wtsd": 0.5, "wsd": 0.0,
+                    "river_bets": 1, "bluffs": 1, "bluff_anteil": 1.0}
+    ben = showdown_statistik(db, "Ben")
+    assert ben["flop_gesehen"] == 2 and ben["wsd"] == 1.0 and ben["river_bets"] == 0
+    assert ben["bluff_anteil"] is None

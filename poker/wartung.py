@@ -84,6 +84,7 @@ def _hand_ids_von(verbindung, sid):
 
 def _haende_loeschen(verbindung, hand_ids):
     for hand_id in hand_ids:
+        verbindung.execute("DELETE FROM empfehlungen WHERE hand_id = ?", (hand_id,))
         verbindung.execute("DELETE FROM aktionen WHERE hand_id = ?", (hand_id,))
         verbindung.execute("DELETE FROM teilnehmer WHERE hand_id = ?", (hand_id,))
         verbindung.execute("DELETE FROM haende WHERE id = ?", (hand_id,))
