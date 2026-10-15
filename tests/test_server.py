@@ -267,3 +267,14 @@ def test_berater_fehler_ueber_server(client):
     assert client.post("/api/abend/held", json={"name": "Zoe"}).status_code == 400
     client.post("/api/abend/hand")
     assert client.post("/api/abend/held/karten", json={"karten": "As"}).status_code == 400
+
+
+# ---------- Entwicklungsmodus ----------
+
+
+def test_entwicklungsmodus_nur_wenn_eingeschaltet(tmp_path, uhr):
+    normal = TestClient(erstelle_app(str(tmp_path / "a.db"), uhr))
+    assert normal.get("/api/entwicklung/stand").status_code == 404
+    entwicklung = TestClient(erstelle_app(str(tmp_path / "b.db"), uhr, entwicklung=True))
+    stand = entwicklung.get("/api/entwicklung/stand").json()
+    assert stand["start"] > 0 and stand["web"] > 0

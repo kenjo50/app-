@@ -777,6 +777,31 @@ async function ladeBilanz() {
 }
 $("b-art").addEventListener("change", ladeBilanz);
 
+// ---------------- Entwicklungsmodus ----------------
+// Laeuft der Server mit --entwicklung, fragt die Seite jede Sekunde nach, ob sich
+// Dateien geaendert haben (oder der Server neu gestartet ist), und laedt sich neu.
+
+async function entwicklungBeobachten() {
+  let erster;
+  try {
+    const antwort = await fetch("/api/entwicklung/stand");
+    if (!antwort.ok) return;          // normaler Betrieb: nichts tun
+    erster = await antwort.json();
+  } catch (e) {
+    return;
+  }
+  document.body.classList.add("entwicklung");
+  setInterval(async () => {
+    try {
+      const stand = await (await fetch("/api/entwicklung/stand")).json();
+      if (stand.start !== erster.start || stand.web !== erster.web) location.reload();
+    } catch (e) {
+      // Server startet gerade neu - beim naechsten Mal wieder versuchen
+    }
+  }, 1000);
+}
+entwicklungBeobachten();
+
 // ---------------- Start ----------------
 
 ladeVorlagenListe();
