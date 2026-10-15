@@ -31,6 +31,7 @@ from fastapi.staticfiles import StaticFiles
 
 from poker import clock as clockmodul
 from poker import kasse, turnier
+from poker import analyse as analysemodul
 from poker import berater
 from poker import tisch as tischmodul
 from poker import wartung
@@ -475,6 +476,12 @@ def erstelle_app(datenbank_pfad, uhr=time.time, entwicklung=False):
             "abende": kasse.abende_liste(db),
             "abgebrochene": abgebrochene,
         }
+
+    # ---------------- Analyse ----------------
+
+    @app.get("/api/analyse/{name}")
+    def analyse_zeigen(name: str):
+        return mit_db(analysemodul.analyse, name)
 
     @app.get("/api/wartung")
     def wartung_zeigen():

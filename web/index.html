@@ -32,6 +32,7 @@
   <button data-tab="turnier">Turnier</button>
   <button data-tab="cash">Cash</button>
   <button data-tab="bilanz">Bilanz</button>
+  <button data-tab="analyse">Analyse</button>
   <button data-tab="daten">Daten</button>
 </nav>
 
@@ -226,6 +227,12 @@
     <p class="klein">Nur abgeschlossene Abende zählen.</p>
   </section>
   <!-- ============ Daten: Sicherung und Aufraeumen ============ -->
+  <!-- ============ Analyse: Was lief gut, was schlecht? ============ -->
+  <section id="tab-analyse" hidden>
+    <label>Spieler <select id="an-spieler"></select></label>
+    <div id="an-inhalt"></div>
+  </section>
+
   <section id="tab-daten" hidden>
     <h2>Sicherungen</h2>
     <p class="klein">Beim Start des Servers und vor jedem Löschen wird automatisch gesichert
@@ -254,5 +261,6 @@
 <!-- app.js zuerst: live.js benutzt dessen Hilfsfunktionen ($, api, euro, ...) -->
 <script src="app.js"></script>
 <script src="live.js"></script>
+<script src="analyse.js"></script>
 </body>
 </html>

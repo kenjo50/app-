@@ -87,6 +87,13 @@ und schlaegt sie einen Zufalls-Bot? Messung in bb/100 ueber viele Haende.
   Spieler am laufenden Live-Abend sind geschuetzt. Abende und abgebrochene Haende
   (ausser der laufenden) lassen sich ebenfalls loeschen.
 
+## Analyse-Modus (Reiter "Analyse")
+- `poker/analyse.py`: Verlauf pro Abend (Datum), Gewinnkurve (aufsummierte BB),
+  KI-Auswertung (Hand "befolgt", wenn jede protokollierte Entscheidung befolgt),
+  Fehlentscheidungen (teuerste zuerst), teuerste Haende, Gegner mit Typ + `ANPASSUNG`-Tipps.
+- Nur abgeschlossene Haende mit Ergebnis, alles in Big Blinds. Endpunkt `/api/analyse/{name}`,
+  Web: `web/analyse.js` (nach `live.js` geladen), Gewinnkurve als SVG mit Antipp-Anzeige.
+
 ## Simulation und Bots
 - Bot = Funktion `bot(sicht, zufall) -> (grundaktion, betrag)`; die Sicht
   (`erstelle_sicht` in `poker/bots.py`) enthaelt nur, was ein Spieler sehen darf.
