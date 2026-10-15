@@ -2,6 +2,10 @@
 
 Start:  python server.py                 (Datenbank heimrunde.db, Port 8000)
         python server.py test.db         (andere Datenbank)
+        python server.py test.db --entwicklung
+                                         Entwicklungsmodus: Server startet bei
+                                         geaenderten .py-Dateien neu, die Seite im
+                                         Browser laedt bei Aenderungen selbst neu
 Dann auf dem iPhone im selben WLAN: http://<IP-des-PCs>:8000
 
 Der Server ist nur die Bruecke zwischen Web-App und Python-Kern:
@@ -14,6 +18,7 @@ Der Server ist nur die Bruecke zwischen Web-App und Python-Kern:
   regelmaessig "alles nach id X" ab und liest neue Ansagen vor.
 """
 
+import os
 import socket
 import sys
 import threading
@@ -32,12 +37,18 @@ from poker.deck import lies_karten
 from poker.profile import oeffne_datenbank, spieler_namen
 
 STANDARD_DATENBANK = "heimrunde.db"
-WEB_ORDNER = Path(__file__).parent / "web"
+PROJEKT_ORDNER = Path(__file__).parent
+WEB_ORDNER = PROJEKT_ORDNER / "web"
+START_ZEIT = time.time()  # aendert sich bei jedem (Neu-)Start des Servers
 MAX_ANSAGEN = 200  # so viele Ansagen merkt sich der Server
 
 
-def erstelle_app(datenbank_pfad, uhr=time.time):
-    """Baut die App. `uhr` liefert die aktuelle Zeit (in Tests austauschbar)."""
+def erstelle_app(datenbank_pfad, uhr=time.time, entwicklung=False):
+    """Baut die App. `uhr` liefert die aktuelle Zeit (in Tests austauschbar).
+
+    entwicklung: zusaetzlicher Endpunkt /api/entwicklung/stand, ueber den die
+    Web-App merkt, dass sich Dateien geaendert haben, und sich neu laedt.
+    """
     app = FastAPI(title="Poker-Heimrunde")
     sperre = threading.Lock()  # Anfragen kommen gleichzeitig, der Zustand nur einmal
     tisch = {
@@ -445,6 +456,21 @@ def erstelle_app(datenbank_pfad, uhr=time.time):
         finally:
             db.close()
 
+    # ---------------- Entwicklungsmodus ----------------
+
+    if entwicklung:
+        @app.get("/api/entwicklung/stand")
+        def entwicklung_stand():
+            """Startzeit des Servers und letzte Aenderung in web/.
+
+            Aendert sich einer der Werte, laedt die Web-App die Seite neu.
+            """
+            letzte_aenderung = 0.0
+            for datei in WEB_ORDNER.iterdir():
+                if datei.is_file():
+                    letzte_aenderung = max(letzte_aenderung, datei.stat().st_mtime)
+            return {"start": START_ZEIT, "web": letzte_aenderung}
+
     # Die Web-App selbst (index.html, app.js, ...) - muss als Letztes kommen
     app.mount("/", StaticFiles(directory=WEB_ORDNER, html=True), name="web")
     return app
@@ -462,10 +488,28 @@ def eigene_ip():
         return "127.0.0.1"
 
 
+def entwicklungs_app():
+    """App fuer den Entwicklungsmodus. uvicorn ruft diese Funktion nach jedem
+    Neustart selbst auf; die Datenbank kommt deshalb ueber eine Umgebungsvariable."""
+    return erstelle_app(os.environ.get("POKER_DATENBANK", STANDARD_DATENBANK), entwicklung=True)
+
+
 if __name__ == "__main__":
     import uvicorn
 
-    pfad = sys.argv[1] if len(sys.argv) > 1 else STANDARD_DATENBANK
+    argumente = [a for a in sys.argv[1:] if a != "--entwicklung"]
+    pfad = argumente[0] if argumente else STANDARD_DATENBANK
     print(f"Datenbank: {pfad}")
-    print(f"Auf dem iPhone oeffnen: http://{eigene_ip()}:8000")
-    uvicorn.run(erstelle_app(pfad), host="0.0.0.0", port=8000, log_level="warning")
+    print("Am PC oeffnen:       http://localhost:8000")
+    print(f"Auf dem iPhone:      http://{eigene_ip()}:8000")
+
+    if "--entwicklung" in sys.argv:
+        print("Entwicklungsmodus: Aenderungen werden automatisch geladen. Beenden mit Strg+C.")
+        os.environ["POKER_DATENBANK"] = pfad
+        # reload=True: uvicorn beobachtet die .py-Dateien und startet bei Aenderungen neu.
+        # Dafuer braucht es die App als Text ("server:entwicklungs_app"), nicht als Objekt.
+        uvicorn.run("server:entwicklungs_app", factory=True, reload=True,
+                    reload_dirs=[str(PROJEKT_ORDNER)], host="0.0.0.0", port=8000,
+                    log_level="warning")
+    else:
+        uvicorn.run(erstelle_app(pfad), host="0.0.0.0", port=8000, log_level="warning")

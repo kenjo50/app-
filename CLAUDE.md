@@ -125,3 +125,5 @@ Variante testen.
   `--duplicate` fuer den Duplicate-Modus; Bots: zufall, equity, felsen, station,
   maniac, tag, misch, ki
 - Web-App: `python server.py`, dann auf dem iPhone `http://<IP-des-PCs>:8000`
+- Entwicklungsmodus: `python server.py test.db --entwicklung` (Server startet bei
+  .py-Aenderungen neu, Browser laedt bei Aenderungen in web/ selbst neu; braucht `watchfiles`)
