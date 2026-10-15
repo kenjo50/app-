@@ -331,3 +331,18 @@ def test_statistik_mit_showdown_werten(client):
     s = client.get("/api/abend/statistik/Clara").json()
     assert s["wtsd"] is None and s["wsd"] is None and s["bluff_anteil"] is None
     assert s["river_bets"] == 0
+
+
+# ---------- Analyse ----------
+
+
+def test_analyse_ueber_server(client):
+    abend_starten(client)
+    client.post("/api/abend/hand")
+    client.post("/api/abend/aktion", json={"aktion": "fold"})
+    client.post("/api/abend/aktion", json={"aktion": "fold"})
+    client.post("/api/abend/gewonnen")
+    a = client.get("/api/analyse/Clara").json()
+    assert len(a["kurve"]) == 1 and len(a["abende"]) == 1
+    assert {g["name"] for g in a["gegner"]} == {"Anna", "Ben"}
+    assert client.get("/api/analyse/Niemand").status_code == 400

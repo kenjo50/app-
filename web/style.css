@@ -265,3 +265,23 @@ body.entwicklung::after { content: "ENTWICKLUNG"; position: fixed; right: 8px; t
 
 /* Reiter "Daten": Zahlen nicht umbrechen */
 #d-spieler td.zahl, #d-abende td { white-space: nowrap; }
+
+/* Reiter "Analyse" */
+#an-spieler { margin-left: 8px; }
+.an-tabelle td, .an-tabelle th { white-space: nowrap; font-size: 0.95rem; }
+.analyse-kasten { background: var(--flaeche); border: 1px solid var(--rand); border-radius: 12px;
+                  padding: 10px 12px; margin: 8px 0; display: grid; gap: 6px; }
+.analyse-kasten .kopf { display: flex; justify-content: space-between; gap: 8px; }
+.analyse-kasten .tipps { margin: 0; padding-left: 18px; font-size: 0.9rem; }
+.kurve { position: relative; margin: 4px 0 8px; touch-action: pan-y; }
+.kurve svg { display: block; }
+.kurve .gitter { stroke: var(--rand); stroke-width: 1; }
+.kurve .gitter.null { stroke: var(--leise); }
+.kurve .achse { fill: var(--leise); font-size: 11px; font-variant-numeric: tabular-nums; }
+.kurve .linie { fill: none; stroke: var(--akzent); stroke-width: 2; stroke-linejoin: round; }
+.kurve .fadenkreuz { stroke: var(--leise); stroke-width: 1; stroke-dasharray: 3 3; }
+.kurve .punkt { fill: var(--akzent); stroke: var(--hintergrund); stroke-width: 2; }
+.kurve .fangflaeche { fill: transparent; }
+.kurven-tipp { position: absolute; top: 0; background: var(--flaeche); border: 1px solid var(--rand);
+               border-radius: 8px; padding: 4px 8px; font-size: 0.85rem; pointer-events: none;
+               white-space: nowrap; }
