@@ -264,3 +264,71 @@ def test_bilanz_ueber_mehrere_abende(db):
     assert b["Anna"]["abende"] == 2
     assert bilanz(db)[0]["name"] == "Ben"   # bester Saldo zuerst
     assert {e["name"]: e["saldo_cent"] for e in bilanz(db, "cash")} == {"Anna": 500, "Ben": -500}
+
+
+# ---------- Wer zahlt wem? ----------
+
+
+def test_ausgleich_einfach():
+    from poker.kasse import ausgleichszahlungen
+    a = ausgleichszahlungen({"Anna": 1000, "Ben": -1000})
+    assert a == {"zahlungen": [{"von": "Ben", "an": "Anna", "betrag_cent": 1000}], "rest_cent": 0}
+
+
+def test_ausgleich_mehrere_spieler_wenige_zahlungen():
+    from poker.kasse import ausgleichszahlungen
+    ergebnisse = {"Anna": 1500, "Ben": -1000, "Clara": -800, "Dave": 500, "Erik": -200}
+    a = ausgleichszahlungen(ergebnisse)
+    assert a["rest_cent"] == 0
+    assert len(a["zahlungen"]) <= len(ergebnisse) - 1
+    # Nach allen Zahlungen steht jeder bei 0
+    stand = dict(ergebnisse)
+    for z in a["zahlungen"]:
+        stand[z["von"]] += z["betrag_cent"]
+        stand[z["an"]] -= z["betrag_cent"]
+        assert z["betrag_cent"] > 0
+    assert all(betrag == 0 for betrag in stand.values())
+
+
+def test_ausgleich_alle_bei_null():
+    from poker.kasse import ausgleichszahlungen
+    assert ausgleichszahlungen({"Anna": 0, "Ben": 0}) == {"zahlungen": [], "rest_cent": 0}
+
+
+def test_ausgleich_wenn_geld_fehlt():
+    from poker.kasse import ausgleichszahlungen
+    # Kontrollrechnung stimmt nicht: Gewinner +1000, Verlierer nur -950
+    a = ausgleichszahlungen({"Anna": 1000, "Ben": -950})
+    assert a["zahlungen"] == [{"von": "Ben", "an": "Anna", "betrag_cent": 950}]
+    assert a["rest_cent"] == 50
+
+
+def test_cash_uebersicht_mit_ausgleich(db):
+    c = neues_cashgame(db)
+    for name in ["Anna", "Ben", "Clara"]:
+        cash_buyin(db, c, name)
+    cash_out(db, c, "Anna", 2200)
+    cash_out(db, c, "Ben", 0)
+    assert cash_uebersicht(db, c)["ausgleich"] is None      # Clara fehlt noch
+    cash_out(db, c, "Clara", 800)
+    a = cash_uebersicht(db, c)["ausgleich"]
+    assert a["zahlungen"] == [
+        {"von": "Ben", "an": "Anna", "betrag_cent": 1000},
+        {"von": "Clara", "an": "Anna", "betrag_cent": 200},
+    ]
+
+
+def test_turnier_ausgleich_nach_abschluss(db):
+    t = turnier_mit_vier(db)                  # 4 x 10 Euro, Auszahlung 70/30
+    turnier_buchen(db, t, "Dave", "rebuy")    # Dave zahlt 20 Euro insgesamt
+    for name in ["Dave", "Clara", "Ben"]:
+        ausscheiden(db, t, name)
+    assert turnier_uebersicht(db, t)["ausgleich"] is None   # noch nicht abgeschlossen
+    a = turnier_abschliessen(db, t)["ausgleich"]
+    # Preisgeld 50: Anna 35 (+25), Ben 15 (+5), Clara -10, Dave -20
+    assert a["rest_cent"] == 0
+    assert a["zahlungen"] == [
+        {"von": "Dave", "an": "Anna", "betrag_cent": 2000},
+        {"von": "Clara", "an": "Anna", "betrag_cent": 500},
+        {"von": "Clara", "an": "Ben", "betrag_cent": 500},
+    ]
