@@ -16,6 +16,7 @@ from poker import live
 from poker.bots import erstelle_sicht
 from poker.ki import erkenne_typ, ki_bewertung
 from poker.profile import berechne_statistik
+from poker.tisch import situation_von
 
 BERATER_DURCHLAEUFE = 2000  # genauer als in der Simulation; am Tisch zaehlt Genauigkeit
 
@@ -61,4 +62,9 @@ def empfehlung(verbindung, abend, durchlaeufe=BERATER_DURCHLAEUFE):
         bewertung["betrag"] = betrag
         if betrag == maximal:
             bewertung["gruende"].append("Das ist dein ganzer Stack (All-in)")
+    # Merken, damit beim Handeln protokolliert werden kann, ob sie befolgt wurde
+    abend["hand"]["letzte_empfehlung"] = {
+        "situation": situation_von(zustand), "aktion": bewertung["aktion"],
+        "betrag": bewertung["betrag"], "equity": bewertung["equity"],
+        "pot_odds": bewertung["pot_odds"]}
     return bewertung

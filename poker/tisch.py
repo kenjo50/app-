@@ -26,7 +26,10 @@ from poker.ki import erkenne_typ
 from poker.profile import (
     berechne_statistik,
     board_speichern,
+    empfehlung_loeschen,
+    empfehlung_speichern,
     letzte_aktion_loeschen,
+    showdown_statistik,
     spieler_id,
 )
 
@@ -201,13 +204,45 @@ def aktion(verbindung, abend, grundaktion, betrag=None):
     name = zustand["am_zug"]
     if name is None:
         raise ValueError("Gerade ist niemand dran")
+    situation = situation_von(zustand)
     _merke(abend, "aktion")
     try:
-        return live.verarbeite_aktion(verbindung, zustand, name, grundaktion,
-                                      None if betrag is None else int(betrag))
+        ergebnis = live.verarbeite_aktion(verbindung, zustand, name, grundaktion,
+                                          None if betrag is None else int(betrag))
     except ValueError:
         abend["hand"]["zwischenstaende"].pop()  # nichts passiert -> nichts merken
         raise
+    _protokolliere(verbindung, abend, name, situation, ergebnis)
+    return ergebnis
+
+
+def situation_von(zustand):
+    """Kennzeichen einer Spielsituation: wie viele Aktionen und Board-Karten bisher."""
+    return [len(zustand["verlauf"]), len(zustand["board"])]
+
+
+def befolgt(empfohlen, gespielt):
+    """Passt die gespielte Aktion zur Empfehlung? (Raise-Empfehlung: bet oder raise)"""
+    if empfohlen == "raise":
+        return gespielt in ["bet", "raise"]
+    return empfohlen == gespielt
+
+
+def _protokolliere(verbindung, abend, name, situation, ergebnis):
+    """Hat der KI-Spieler gehandelt und gab es fuer genau diese Situation eine
+    Empfehlung, wird beides gespeichert (fuer den Analyse-Modus)."""
+    empfehlung = abend["hand"].get("letzte_empfehlung")
+    if name != abend.get("held") or not empfehlung or empfehlung["situation"] != situation:
+        return
+    gespielt, gespielt_betrag = ergebnis
+    zustand = abend["hand"]["zustand"]
+    strasse = zustand["verlauf"][-1]["strasse"]
+    protokoll_id = empfehlung_speichern(
+        verbindung, zustand["hand_id"], name, strasse, empfehlung["aktion"], empfehlung["betrag"],
+        gespielt, gespielt_betrag, befolgt(empfehlung["aktion"], gespielt),
+        empfehlung["equity"], empfehlung["pot_odds"])
+    # Beim Rueckgaengigmachen soll auch der Protokolleintrag verschwinden
+    abend["hand"]["zwischenstaende"][-1]["protokoll_id"] = protokoll_id
 
 
 def board_karten(verbindung, abend, karten):
@@ -231,6 +266,8 @@ def rueckgaengig(verbindung, abend):
     if not abend["hand"]["zwischenstaende"]:
         raise ValueError("Es gibt nichts zum Rueckgaengigmachen")
     letzter = abend["hand"]["zwischenstaende"].pop()
+    if letzter.get("protokoll_id"):
+        empfehlung_loeschen(verbindung, letzter["protokoll_id"])
     if letzter["art"] == "aktion":
         letzte_aktion_loeschen(verbindung, zustand["hand_id"])
     else:
@@ -406,7 +443,12 @@ def spieler_statistik(verbindung, name):
     """Statistik und erkannter Spielertyp eines Spielers (alle abgeschlossenen Haende)."""
     statistik = berechne_statistik(verbindung, name)
     erkennung = erkenne_typ(statistik)
+    showdown = showdown_statistik(verbindung, name)
     return {
+        "wtsd": showdown["wtsd"],
+        "wsd": showdown["wsd"],
+        "bluff_anteil": showdown["bluff_anteil"],
+        "river_bets": showdown["river_bets"],
         "name": name,
         "haende": statistik["haende"],
         "vpip": statistik["vpip"],

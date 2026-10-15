@@ -641,10 +641,16 @@ async function zeigeStatistik(name) {
       <div><span class="klein">AF</span><strong>${s.af === null ? "–" : s.af.toFixed(1)}</strong></div>
       <div><span class="klein">bb/100</span><strong>${s.bb_pro_100 === null ? "–" : Math.round(s.bb_pro_100)}</strong></div>
       <div><span class="klein">Sicherheit</span><strong>${Math.round(s.sicherheit * 100)} %</strong></div>
+      <div><span class="klein">WTSD</span><strong>${prozent(s.wtsd)}</strong></div>
+      <div><span class="klein">W$SD</span><strong>${prozent(s.wsd)}</strong></div>
+      <div><span class="klein">Bluffs</span><strong>${prozent(s.bluff_anteil)}</strong></div>
     </div>
     <p>Typ: <strong>${esc(TYP_TEXT[s.typ] || s.typ)}</strong></p>
     <p class="klein">VPIP: wie oft freiwillig mitgespielt · PFR: wie oft vor dem Flop erhöht ·
-      AF: Setzen/Erhöhen geteilt durch Callen. Nur abgeschlossene Hände zählen.</p>
+      AF: Setzen/Erhöhen geteilt durch Callen · WTSD: wie oft nach dem Flop bis zum Showdown ·
+      W$SD: wie oft dort gewonnen · Bluffs: Anteil der River-Einsätze, die sich beim Showdown
+      als Bluff zeigten (${s.river_bets} River-Einsätze; unentdeckte Bluffs fehlen).
+      Nur abgeschlossene Hände zählen.</p>
     <button class="gross" id="blatt-zu">Schließen</button>
   </div>`;
   blatt.hidden = false;

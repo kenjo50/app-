@@ -320,3 +320,14 @@ def test_abgebrochene_haende_ueber_server(client):
 def test_live_spieler_nicht_loeschen(client):
     abend_starten(client)
     assert client.delete("/api/wartung/spieler/Anna").status_code == 400
+
+
+def test_statistik_mit_showdown_werten(client):
+    abend_starten(client)
+    client.post("/api/abend/hand")
+    for aktion in ["fold", "fold"]:
+        client.post("/api/abend/aktion", json={"aktion": aktion})
+    client.post("/api/abend/gewonnen")
+    s = client.get("/api/abend/statistik/Clara").json()
+    assert s["wtsd"] is None and s["wsd"] is None and s["bluff_anteil"] is None
+    assert s["river_bets"] == 0
