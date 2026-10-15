@@ -538,7 +538,30 @@ async function ladeTurnier() {
   }
 }
 
+// Tabelle "Wer zahlt wem?" - fuer Cash Game und Turnier
+function ausgleichHtml(ausgleich) {
+  const zahlungen = ausgleich.zahlungen;
+  let html = "<h2>Wer zahlt wem?</h2>";
+  if (zahlungen.length === 0) {
+    html += "<p>Niemand muss etwas zahlen.</p>";
+  } else {
+    html += '<table class="ausgleich"><tbody>' + zahlungen.map((z) =>
+      `<tr><td>${esc(z.von)}</td><td>→</td><td>${esc(z.an)}</td>
+       <td class="zahl"><strong>${euro(z.betrag_cent)}</strong></td></tr>`).join("") +
+      "</tbody></table>";
+  }
+  if (ausgleich.rest_cent > 0) {
+    html += `<p>⚠️ Den Gewinnern fehlen zusammen noch ${euro(ausgleich.rest_cent)}.</p>`;
+  } else if (ausgleich.rest_cent < 0) {
+    html += `<p>⚠️ Es bleiben ${euro(-ausgleich.rest_cent)} übrig.</p>`;
+  }
+  return html;
+}
+
 function zeichneTurnier(u) {
+  // Nach dem Abschliessen: wer zahlt wem?
+  $("tu-ausgleich").hidden = !u.ausgleich;
+  $("tu-ausgleich").innerHTML = u.ausgleich ? ausgleichHtml(u.ausgleich) : "";
   $("tu-eintraege").textContent = u.eintraege;
   $("tu-preisgeld").textContent = euro(u.preisgeld_cent);
   $("tu-imspiel").textContent = `${u.im_spiel} / ${u.spieler_gesamt}`;
@@ -694,23 +717,7 @@ function zeichneCash(u) {
     text += "<br>✓ Kontrollrechnung stimmt.";
   }
   // Wer zahlt wem? (erst wenn alle einen Cash-out haben)
-  if (u.ausgleich) {
-    const zahlungen = u.ausgleich.zahlungen;
-    text += "<h2>Wer zahlt wem?</h2>";
-    if (zahlungen.length === 0) {
-      text += "<p>Niemand muss etwas zahlen.</p>";
-    } else {
-      text += '<table class="ausgleich"><tbody>' + zahlungen.map((z) =>
-        `<tr><td>${esc(z.von)}</td><td>→</td><td>${esc(z.an)}</td>
-         <td class="zahl"><strong>${euro(z.betrag_cent)}</strong></td></tr>`).join("") +
-        "</tbody></table>";
-    }
-    if (u.ausgleich.rest_cent > 0) {
-      text += `<p>⚠️ Den Gewinnern fehlen zusammen noch ${euro(u.ausgleich.rest_cent)} (siehe Differenz oben).</p>`;
-    } else if (u.ausgleich.rest_cent < 0) {
-      text += `<p>⚠️ Es bleiben ${euro(-u.ausgleich.rest_cent)} übrig (siehe Differenz oben).</p>`;
-    }
-  }
+  if (u.ausgleich) text += ausgleichHtml(u.ausgleich);
   k.innerHTML = text;
   k.className = "kontrolle " + (u.stimmt ? "ok" : u.offen.length ? "" : "fehler");
 }

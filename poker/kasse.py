@@ -357,7 +357,16 @@ def turnier_uebersicht(verbindung, abend_id):
         "im_spiel": im_spiel,
         "spieler": spieler,
         "auszahlung": auszahlung,
+        "ausgleich": _turnier_ausgleich(spieler) if abend["beendet"] else None,
     }
+
+
+def _turnier_ausgleich(spieler):
+    """Wer zahlt wem nach dem Turnier: Ergebnis = Auszahlung minus alles Eingezahlte."""
+    ergebnisse = {}
+    for s in spieler:
+        ergebnisse[s["name"]] = s["ausgezahlt_cent"] - s["eingezahlt_cent"]
+    return ausgleichszahlungen(ergebnisse)
 
 
 def turnier_abschliessen(verbindung, abend_id, zeitpunkt=None):

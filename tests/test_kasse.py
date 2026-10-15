@@ -316,3 +316,19 @@ def test_cash_uebersicht_mit_ausgleich(db):
         {"von": "Ben", "an": "Anna", "betrag_cent": 1000},
         {"von": "Clara", "an": "Anna", "betrag_cent": 200},
     ]
+
+
+def test_turnier_ausgleich_nach_abschluss(db):
+    t = turnier_mit_vier(db)                  # 4 x 10 Euro, Auszahlung 70/30
+    turnier_buchen(db, t, "Dave", "rebuy")    # Dave zahlt 20 Euro insgesamt
+    for name in ["Dave", "Clara", "Ben"]:
+        ausscheiden(db, t, name)
+    assert turnier_uebersicht(db, t)["ausgleich"] is None   # noch nicht abgeschlossen
+    a = turnier_abschliessen(db, t)["ausgleich"]
+    # Preisgeld 50: Anna 35 (+25), Ben 15 (+5), Clara -10, Dave -20
+    assert a["rest_cent"] == 0
+    assert a["zahlungen"] == [
+        {"von": "Dave", "an": "Anna", "betrag_cent": 2000},
+        {"von": "Clara", "an": "Anna", "betrag_cent": 500},
+        {"von": "Clara", "an": "Ben", "betrag_cent": 500},
+    ]
