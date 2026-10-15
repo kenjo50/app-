@@ -462,6 +462,13 @@ def cash_uebersicht(verbindung, abend_id):
                         "cashout_cent": cashout, "ergebnis_cent": ergebnis})
 
     differenz = summe_cashouts - summe_buyins
+    # Wer zahlt wem? Erst sinnvoll, wenn alle einen Cash-out haben.
+    ausgleich = None
+    if not offen:
+        ergebnisse = {}
+        for s in spieler:
+            ergebnisse[s["name"]] = s["ergebnis_cent"]
+        ausgleich = ausgleichszahlungen(ergebnisse)
     return {
         "id": abend_id,
         "beendet": abend["beendet"],
@@ -471,7 +478,42 @@ def cash_uebersicht(verbindung, abend_id):
         "differenz_cent": differenz,
         "offen": offen,
         "stimmt": len(offen) == 0 and differenz == 0,
+        "ausgleich": ausgleich,
     }
+
+
+def ausgleichszahlungen(ergebnisse_cent):
+    """Wer muss wem wie viel geben, damit alle ausgeglichen sind?
+
+    ergebnisse_cent: {name: gewinn_oder_verlust}, z. B. {"Anna": 1500, "Ben": -1000, ...}
+    Vorgehen: Der Spieler mit dem groessten Minus zahlt an den mit dem groessten
+    Plus, so viel wie geht; dann der naechste. So braucht es hoechstens
+    (Anzahl Spieler - 1) Zahlungen.
+
+    Rueckgabe: {"zahlungen": [{"von", "an", "betrag_cent"}, ...],
+                "rest_cent": was nicht verteilt werden konnte}
+    Der Rest ist nur ungleich 0, wenn die Kontrollrechnung nicht stimmt
+    (positiv: es fehlt Geld fuer die Gewinner, negativ: es ist Geld uebrig).
+    """
+    # Listen [name, betrag], groesster Betrag zuerst; bei Gleichstand nach Name
+    schuldner = sorted([[n, -b] for n, b in ergebnisse_cent.items() if b < 0],
+                       key=lambda e: (-e[1], e[0]))
+    glaeubiger = sorted([[n, b] for n, b in ergebnisse_cent.items() if b > 0],
+                        key=lambda e: (-e[1], e[0]))
+    zahlungen = []
+    i = 0
+    j = 0
+    while i < len(schuldner) and j < len(glaeubiger):
+        betrag = min(schuldner[i][1], glaeubiger[j][1])
+        zahlungen.append({"von": schuldner[i][0], "an": glaeubiger[j][0], "betrag_cent": betrag})
+        schuldner[i][1] -= betrag
+        glaeubiger[j][1] -= betrag
+        if schuldner[i][1] == 0:
+            i += 1
+        if glaeubiger[j][1] == 0:
+            j += 1
+    rest = sum(b for n, b in glaeubiger) - sum(b for n, b in schuldner)
+    return {"zahlungen": zahlungen, "rest_cent": rest}
 
 
 def cash_abschliessen(verbindung, abend_id):
