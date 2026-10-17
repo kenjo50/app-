@@ -33,6 +33,7 @@
   <button data-tab="cash">Cash</button>
   <button data-tab="bilanz">Bilanz</button>
   <button data-tab="analyse">Analyse</button>
+  <button data-tab="lernen">Lernen</button>
   <button data-tab="daten">Daten</button>
 </nav>
 
@@ -233,6 +234,45 @@
     <div id="an-inhalt"></div>
   </section>
 
+  <!-- ============ Lerntisch: ueben gegen Bots, die echte Spieler nachahmen ============ -->
+  <section id="tab-lernen" hidden>
+    <div id="lr-start" hidden>
+      <h2>Lerntisch</h2>
+      <p class="klein">Üben mit Spielgeld (Blinds 0,10 / 0,10 €, 10 € pro Spieler, wer pleite ist,
+        bekommt neue 10 €). Die Bots spielen wie deine Mitspieler. Nach jeder Entscheidung
+        siehst du, was die KI gemacht hätte. Gespeichert wird in einer eigenen Datenbank.</p>
+      <label>Dein Name <input id="lr-held" list="spielerliste" autocomplete="off"></label>
+      <h2>Gegner aus der Runde</h2>
+      <div id="lr-echte" class="chips-auswahl"></div>
+      <h2>Typ-Bots dazu</h2>
+      <div class="chips-auswahl">
+        <button class="klein-knopf" data-lr-typ="felsen">+ Felsen</button>
+        <button class="klein-knopf" data-lr-typ="station">+ Calling Station</button>
+        <button class="klein-knopf" data-lr-typ="maniac">+ Maniac</button>
+        <button class="klein-knopf" data-lr-typ="tag">+ TAG</button>
+      </div>
+      <h2>Am Tisch</h2>
+      <div id="lr-auswahl"></div>
+      <button id="lr-los" class="haupt gross">Los geht's</button>
+    </div>
+
+    <div id="lr-tisch" hidden>
+      <p id="lr-sitzung" class="klein"></p>
+      <div id="lr-spieler" class="spielerleiste"></div>
+      <p id="lr-info" class="live-info"></p>
+      <div id="lr-board" class="board"></div>
+      <div id="lr-meine" class="held-karten"></div>
+      <div id="lr-tipp"></div>
+      <div id="lr-ergebnis"></div>
+      <div id="lr-raise"></div>
+      <div id="lr-verlauf" class="klein verlauf"></div>
+      <button id="lr-beenden" class="klein-knopf gefahr abbrechen-knopf">Sitzung beenden</button>
+      <div id="lr-aktionen" class="aktionsleiste" hidden></div>
+    </div>
+
+    <div id="lr-ende" hidden></div>
+  </section>
+
   <section id="tab-daten" hidden>
     <h2>Sicherungen</h2>
     <p class="klein">Beim Start des Servers und vor jedem Löschen wird automatisch gesichert
@@ -262,5 +302,6 @@
 <script src="app.js"></script>
 <script src="live.js"></script>
 <script src="analyse.js"></script>
+<script src="lerntisch.js"></script>
 </body>
 </html>

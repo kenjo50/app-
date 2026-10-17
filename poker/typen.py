@@ -123,10 +123,14 @@ def erstelle_typ_bot(typ, zufall, streuung=1.0):
     if typ not in ALLE_TYPEN:
         raise ValueError(f"Unbekannter Spielertyp: {typ}")
     werte = streue_werte(ALLE_TYPEN[typ], zufall, streuung)
+    return bot_aus_werten(werte), werte
 
+
+def bot_aus_werten(werte):
+    """Bot mit fest vorgegebenen Werten (z. B. nachgeahmt von einem echten Spieler)."""
     def bot(sicht, zufall):
         if sicht["strasse"] == "preflop":
             return _preflop(werte, sicht, zufall)
         return _nach_dem_flop(werte, sicht, zufall)
 
-    return bot, werte
+    return bot

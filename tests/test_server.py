@@ -346,3 +346,45 @@ def test_analyse_ueber_server(client):
     assert len(a["kurve"]) == 1 and len(a["abende"]) == 1
     assert {g["name"] for g in a["gegner"]} == {"Anna", "Ben"}
     assert client.get("/api/analyse/Niemand").status_code == 400
+
+
+# ---------- Lerntisch ----------
+
+
+def test_lerntisch_ueber_server(client, tmp_path):
+    abend_starten(client)   # legt Anna, Ben, Clara in der Heimrunde-Datenbank an
+    assert client.get("/api/lerntisch").json()["spiel"] is None
+    antwort = client.post("/api/lerntisch", json={
+        "held": "Oliver", "gegner": [{"spieler": "Ben"}, {"typ": "maniac"}]})
+    assert antwort.status_code == 200
+    spiel = antwort.json()["spiel"]
+    assert spiel["held"] == "Oliver" and spiel["hand"] is not None
+    assert list(spiel["hand"]["karten"]) == ["Oliver"]
+
+    # Bots Schritt fuer Schritt, du checkst/callst, bis die Hand vorbei ist
+    for _ in range(200):
+        if spiel["phase"] == "ende":
+            break
+        if spiel["phase"] == "held":
+            aktion = "check" if "check" in spiel["hand"]["erlaubt"] else "call"
+            antwort = client.post("/api/lerntisch/aktion", json={"aktion": aktion}).json()
+            assert antwort["tipp"]["du"] in ["check", "call"]
+        else:
+            antwort = client.post("/api/lerntisch/schritt").json()
+        spiel = antwort["spiel"]
+    assert spiel["phase"] == "ende"
+    assert spiel["hand"]["ergebnis"]["gewinner"]
+
+    spiel = client.post("/api/lerntisch/hand").json()["spiel"]
+    assert spiel["phase"] in ["held", "bots"]
+    ende = client.post("/api/lerntisch/ende").json()
+    assert ende["zusammenfassung"]["haende"] == 1
+    assert client.get("/api/lerntisch").json()["spiel"] is None
+    # Eigene Datenbank neben der echten
+    assert any(p.name.endswith("_lerntisch.db") for p in tmp_path.iterdir())
+
+
+def test_lerntisch_fehler(client):
+    assert client.post("/api/lerntisch", json={"held": "Oliver", "gegner": []}).status_code == 400
+    assert client.post("/api/lerntisch/schritt").status_code == 400
+    assert client.post("/api/lerntisch/ende").status_code == 400

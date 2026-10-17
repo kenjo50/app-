@@ -232,7 +232,7 @@ $("steuergeraet").addEventListener("change", () => {
 
 // ---------------- Tabs ----------------
 
-const TABS = ["hand", "timer", "clock", "struktur", "turnier", "cash", "bilanz", "analyse", "daten"];
+const TABS = ["hand", "timer", "clock", "struktur", "turnier", "cash", "bilanz", "analyse", "lernen", "daten"];
 
 function zeigeTab(name) {
   for (const tab of TABS) {
@@ -249,6 +249,7 @@ function zeigeTab(name) {
   // ladeLive kommt aus live.js, das erst nach app.js geladen wird
   if (name === "hand" && typeof ladeLive === "function") ladeLive();
   if (name === "analyse" && typeof ladeAnalyse === "function") ladeAnalyse();
+  if (name === "lernen" && typeof ladeLerntisch === "function") ladeLerntisch();
   if (name === "struktur" && struktur.length === 0) strukturAusVorlage();
 }
 

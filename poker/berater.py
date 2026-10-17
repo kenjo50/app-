@@ -27,6 +27,31 @@ def _runde_auf_chips(betrag, schritt, minimum, maximum):
     return max(minimum, min(gerundet, maximum))
 
 
+def bewerte_situation(zustand, held, karten, erkennung, schritt,
+                      durchlaeufe=BERATER_DURCHLAEUFE):
+    """Was wuerde die KI in dieser Situation tun? (fuer Live-Tisch und Lerntisch)
+
+    erkennung: Funktion name -> Typ-Erkennung des Gegners (erkenne_typ).
+    schritt: kleinster Chip (Raise wird darauf gerundet).
+    Rueckgabe wie ki_bewertung, Raise-Betrag auf Chips gerundet.
+    """
+    sicht = erstelle_sicht(zustand, held, karten)
+    erkennungen = [erkennung(gegner) for gegner in sicht["aktive_gegner"]]
+
+    # Fester Startwert: gleiche Situation -> gleiche Empfehlung
+    zufall = random.Random(f"{zustand['hand_id']}-{len(zustand['verlauf'])}-{len(zustand['board'])}")
+    bewertung = ki_bewertung(sicht, erkennungen, zufall, durchlaeufe)
+
+    if bewertung["aktion"] == "raise":
+        maximal = sicht["maximal"]
+        minimum = min(live.mindest_erhoehung(zustand), maximal)
+        betrag = _runde_auf_chips(bewertung["betrag"], schritt, minimum, maximal)
+        bewertung["betrag"] = betrag
+        if betrag == maximal:
+            bewertung["gruende"].append("Das ist dein ganzer Stack (All-in)")
+    return bewertung
+
+
 def empfehlung(verbindung, abend, durchlaeufe=BERATER_DURCHLAEUFE):
     """Was soll der Held jetzt tun?
 
@@ -45,23 +70,12 @@ def empfehlung(verbindung, abend, durchlaeufe=BERATER_DURCHLAEUFE):
     if zustand["am_zug"] != held:
         raise ValueError(f"{held} ist gerade nicht dran")
 
-    sicht = erstelle_sicht(zustand, held, karten)
-    erkennungen = []
-    for gegner in sicht["aktive_gegner"]:
+    def erkennung(gegner):
         # Nur abgeschlossene Haende zaehlen - die laufende Hand also nicht
-        erkennungen.append(erkenne_typ(berechne_statistik(verbindung, gegner)))
+        return erkenne_typ(berechne_statistik(verbindung, gegner))
 
-    # Fester Startwert: gleiche Situation -> gleiche Empfehlung
-    zufall = random.Random(f"{zustand['hand_id']}-{len(zustand['verlauf'])}-{len(zustand['board'])}")
-    bewertung = ki_bewertung(sicht, erkennungen, zufall, durchlaeufe)
-
-    if bewertung["aktion"] == "raise":
-        maximal = sicht["maximal"]
-        minimum = min(live.mindest_erhoehung(zustand), maximal)
-        betrag = _runde_auf_chips(bewertung["betrag"], abend["small_blind"], minimum, maximal)
-        bewertung["betrag"] = betrag
-        if betrag == maximal:
-            bewertung["gruende"].append("Das ist dein ganzer Stack (All-in)")
+    bewertung = bewerte_situation(zustand, held, karten, erkennung, abend["small_blind"],
+                                  durchlaeufe)
     # Merken, damit beim Handeln protokolliert werden kann, ob sie befolgt wurde
     abend["hand"]["letzte_empfehlung"] = {
         "situation": situation_von(zustand), "aktion": bewertung["aktion"],
