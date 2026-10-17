@@ -147,9 +147,9 @@ tr.raus td { color: var(--leise); }
 .kacheln > div { background: var(--flaeche); border-radius: 12px; padding: 12px; text-align: center; }
 .kacheln strong { display: block; font-size: 1.6rem; font-variant-numeric: tabular-nums; }
 
-.karte { background: var(--flaeche); border: 1px solid var(--rand); border-radius: 12px;
+.kasten { background: var(--flaeche); border: 1px solid var(--rand); border-radius: 12px;
          padding: 12px; margin: 10px 0; }
-.karte h3 { margin: 0 0 6px; font-size: 1.1rem; display: flex; justify-content: space-between; }
+.kasten h3 { margin: 0 0 6px; font-size: 1.1rem; display: flex; justify-content: space-between; }
 .plus { color: var(--akzent); }
 .minus { color: var(--warnung); }
 .kontrolle { border-radius: 12px; padding: 12px; margin: 12px 0; }

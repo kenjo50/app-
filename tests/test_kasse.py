@@ -332,3 +332,30 @@ def test_turnier_ausgleich_nach_abschluss(db):
         {"von": "Clara", "an": "Anna", "betrag_cent": 500},
         {"von": "Clara", "an": "Ben", "betrag_cent": 500},
     ]
+
+
+def test_cash_rebuy_mit_anderer_schreibweise(db):
+    c = neues_cashgame(db)
+    cash_buyin(db, c, "Ben")
+    cash_buyin(db, c, "ben ")           # Rebuy, nur anders geschrieben
+    cash_buyin(db, c, "  BEN")
+    u = cash_uebersicht(db, c)
+    assert [s["name"] for s in u["spieler"]] == ["Ben"]
+    assert u["spieler"][0]["summe_buyins_cent"] == 3000
+    assert len(u["spieler"][0]["buyins"]) == 3
+
+
+def test_cash_buyin_ohne_namen(db):
+    c = neues_cashgame(db)
+    with pytest.raises(ValueError):
+        cash_buyin(db, c, "   ")
+
+
+def test_turnier_rebuy_mit_anderer_schreibweise(db):
+    t = neues_turnier(db, 1000, rebuy_cent=1000)
+    turnier_buchen(db, t, "Anna", "buyin")
+    turnier_buchen(db, t, "anna", "rebuy")
+    with pytest.raises(ValueError):
+        turnier_buchen(db, t, "ANNA", "buyin")   # schon angemeldet
+    u = turnier_uebersicht(db, t)
+    assert u["rebuys"] == 1 and len(u["spieler"]) == 1

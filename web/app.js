@@ -701,10 +701,14 @@ function zeichneCash(u) {
         ${CHIPS.map(([wert, text]) =>
           `<label>${text}<input type="number" min="0" inputmode="numeric" data-chipwert="${wert}" data-ziel="${i}"></label>`).join("")}
       </div>`;
-    return `<div class="karte">
+    // Rebuy mit einem Tippen (Betrag aus dem Feld oben, Standard 10 €)
+    const rebuy = u.beendet ? "" :
+      `<button class="klein-knopf haupt" data-rebuy="${n}">Rebuy</button>`;
+    return `<div class="kasten">
       <h3><span>${n}</span>${ergebnis}</h3>
       ${buyins}
-      <p class="klein">Buy-ins gesamt: ${euro(s.summe_buyins_cent)}</p>
+      <div class="zeile"><span class="klein">Buy-ins gesamt: ${euro(s.summe_buyins_cent)}
+        (${s.buyins.length}×)</span>${rebuy}</div>
       ${cashout}
     </div>`;
   }).join("");
@@ -733,6 +737,11 @@ $("ca-spieler").addEventListener("click", async (e) => {
     if (!bestaetigt(b, "Löschen?")) return;
     await api("/api/buchung/" + b.dataset.loeschen, "DELETE");
     zeichneCash(await api("/api/cash/" + id));
+  } else if (b.dataset.rebuy) {
+    const name = b.dataset.rebuy;
+    const betrag = $("ca-betrag").value;
+    zeichneCash(await api(`/api/cash/${id}/buyin`, "POST", { name, betrag }));
+    meldung(`Rebuy für ${name}: ${betrag} €`, true);
   } else if (b.dataset.cashout) {
     const betrag = $(b.dataset.feld).value;
     zeichneCash(await api(`/api/cash/${id}/cashout`, "POST", { name: b.dataset.cashout, betrag }));
