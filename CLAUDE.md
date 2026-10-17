@@ -94,6 +94,16 @@ und schlaegt sie einen Zufalls-Bot? Messung in bb/100 ueber viele Haende.
 - Nur abgeschlossene Haende mit Ergebnis, alles in Big Blinds. Endpunkt `/api/analyse/{name}`,
   Web: `web/analyse.js` (nach `live.js` geladen), Gewinnkurve als SVG mit Antipp-Anzeige.
 
+## Hand-Analyse und Odds-Rechner (Reiter "Analyse": Spieler | Haende | Rechner)
+- `poker/handanalyse.py`: `analysiere_hand` rechnet eine gespeicherte Hand Strasse fuer
+  Strasse nach (Pot/zu callen aus den Aktionen, Blinds Platz 0/1): Equity "wirklich"
+  (gegen echte Karten, nur wenn alle aktiven Gegner bekannt; ab Flop exakt ausgezaehlt),
+  "zufall" und "bereich" (`schaetze_bereich`), Outs, Pot Odds + Urteil bei jeder Entscheidung.
+- Fester Startwert pro Hand -> reproduzierbar. `hand_liste` = abgeschlossene Haende mit
+  bekannten Karten; `odds_rechner` fuer freie Eingabe (1 Hand -> gegen Zufall).
+- Endpunkte `/api/haende/{heimrunde|lerntisch}[/{hand_id}]`, `/api/odds`;
+  Web: `web/handanalyse.js` (nach `lerntisch.js`, ersetzt `ladeAnalyse` durch den Umschalter).
+
 ## Lerntisch (Reiter "Lernen")
 - `poker/lerntisch.py`: ueben mit Spielgeld gegen Bots (Blinds 10/10 ct, 10 Euro, pleite ->
   neue 10 Euro). Echte Spieler ab 20 Haenden werden nachgeahmt (`nachahmer_werte`: Typ-Bot-Werte,
