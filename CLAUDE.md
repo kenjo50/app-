@@ -112,7 +112,11 @@ und schlaegt sie einen Zufalls-Bot? Messung in bb/100 ueber viele Haende.
   Sicherheit = Datenlage x Trennschaerfe x Passung, unter 20 Haenden "unbekannt".
   Gegnerbereiche aus Typ + Aktionen, gemischt mit Standard je nach Sicherheit;
   Equity gegen Bereiche; Anpassungen immer mit der Sicherheit gewichtet.
-- Prototypen sind gemessen (6er-Tisch). Aendern sich die Typ-Bots, neu messen.
+- Prototypen je Tischgroesse 2-9 gemessen (`poker/messung.py`, `PROTOTYPEN_NACH_GROESSE`);
+  `berechne_statistik` liefert `tischgroessen` {spieler: haende}, `prototypen_fuer` mischt
+  die Prototypen danach gewichtet. Aendern sich die Typ-Bots: `python cli.py messen`.
+- `abstand` erlaubt mehr Abweichung, je weniger Haende/Aktionen hinter einem Wert stehen
+  (Zufallsschwankung p(1-p)/n), sonst kippen Felsen mit 3 Flop-Aktionen zum TAG.
 - Duplicate-Modus: gleiche Karten, rotierte Plaetze; Unsicherheit ueber Verteilungen.
 
 ## Kartendarstellung (verbindlich)
@@ -144,6 +148,7 @@ Variante testen.
 - Simulation: `python cli.py sim 1000 zufall,equity,equity 42` (Haende, Bots, Seed),
   `--duplicate` fuer den Duplicate-Modus; Bots: zufall, equity, felsen, station,
   maniac, tag, misch, ki
+- Prototypen neu messen: `python cli.py messen [haende] [seed]` (Ausgabe in `poker/ki.py` einfuegen)
 - Web-App: `python server.py`, dann auf dem iPhone `http://<IP-des-PCs>:8000`
 - Entwicklungsmodus: `python server.py test.db --entwicklung` (Server startet bei
   .py-Aenderungen neu, Browser laedt bei Aenderungen in web/ selbst neu; braucht `watchfiles`)
