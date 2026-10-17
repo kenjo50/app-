@@ -94,6 +94,16 @@ und schlaegt sie einen Zufalls-Bot? Messung in bb/100 ueber viele Haende.
 - Nur abgeschlossene Haende mit Ergebnis, alles in Big Blinds. Endpunkt `/api/analyse/{name}`,
   Web: `web/analyse.js` (nach `live.js` geladen), Gewinnkurve als SVG mit Antipp-Anzeige.
 
+## Lerntisch (Reiter "Lernen")
+- `poker/lerntisch.py`: ueben mit Spielgeld gegen Bots (Blinds 10/10 ct, 10 Euro, pleite ->
+  neue 10 Euro). Echte Spieler ab 20 Haenden werden nachgeahmt (`nachahmer_werte`: Typ-Bot-Werte,
+  VPIP/PFR/Aggression auf ihre Statistik umgerechnet), sonst naechster Grundtyp; dazu Typ-Bots.
+- Eigene Datenbank `<name>_lerntisch.db` neben der echten; Spiel nur im Speicher des Servers.
+- `schritt` = eine Bot-Aktion / neue Karten / Abrechnung (Web fragt alle 600 ms);
+  `held_aktion` berechnet vorher den KI-Tipp (`berater.bewerte_situation`), zeigt ihn erst
+  danach und protokolliert in `empfehlungen`. Die KI kennt echte Spieler aus der Heimrunde-DB.
+- Web: `web/lerntisch.js` (nach `analyse.js` geladen), Endpunkte unter `/api/lerntisch/...`.
+
 ## Simulation und Bots
 - Bot = Funktion `bot(sicht, zufall) -> (grundaktion, betrag)`; die Sicht
   (`erstelle_sicht` in `poker/bots.py`) enthaelt nur, was ein Spieler sehen darf.

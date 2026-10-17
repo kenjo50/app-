@@ -19,6 +19,7 @@ Der Server ist nur die Bruecke zwischen Web-App und Python-Kern:
 """
 
 import os
+import random
 import socket
 import sys
 import threading
@@ -33,6 +34,7 @@ from poker import clock as clockmodul
 from poker import kasse, turnier
 from poker import analyse as analysemodul
 from poker import berater
+from poker import lerntisch
 from poker import tisch as tischmodul
 from poker import wartung
 from poker.deck import lies_karten
@@ -476,6 +478,72 @@ def erstelle_app(datenbank_pfad, uhr=time.time, entwicklung=False):
             "abende": kasse.abende_liste(db),
             "abgebrochene": abgebrochene,
         }
+
+    # ---------------- Lerntisch (Spielgeld, eigene Datenbank) ----------------
+
+    pfad = Path(datenbank_pfad)
+    lern_pfad = pfad.with_name(f"{pfad.stem}_lerntisch.db")
+    lern = {"spiel": None, "zufall": random.Random()}
+
+    def lern_antwort(**zusatz):
+        antwort = {"spiel": None if lern["spiel"] is None else lerntisch.anzeige(lern["spiel"])}
+        antwort.update(zusatz)
+        return antwort
+
+    def mit_lern_db(funktion):
+        """Beide Datenbanken oeffnen (Lerntisch + Heimrunde), nur eine Anfrage gleichzeitig."""
+        with sperre:
+            lern_db = oeffne_datenbank(lern_pfad)
+            echt_db = datenbank()
+            try:
+                return funktion(lern_db, echt_db)
+            finally:
+                lern_db.close()
+                echt_db.close()
+
+    def laufendes_spiel():
+        if lern["spiel"] is None:
+            raise ValueError("Es laeuft kein Lerntisch")
+        return lern["spiel"]
+
+    @app.get("/api/lerntisch")
+    def lerntisch_zeigen():
+        return lern_antwort()
+
+    @app.post("/api/lerntisch")
+    def lerntisch_starten(daten: dict = Body(...)):
+        def starten(lern_db, echt_db):
+            lern["spiel"] = lerntisch.neues_spiel(echt_db, daten.get("held"),
+                                                  daten.get("gegner") or [])
+            lerntisch.starte_hand(lern_db, lern["spiel"], lern["zufall"])
+        mit_lern_db(starten)
+        return lern_antwort()
+
+    @app.post("/api/lerntisch/hand")
+    def lerntisch_hand():
+        mit_lern_db(lambda lern_db, echt_db: lerntisch.starte_hand(
+            lern_db, laufendes_spiel(), lern["zufall"]))
+        return lern_antwort()
+
+    @app.post("/api/lerntisch/schritt")
+    def lerntisch_schritt():
+        ereignis = mit_lern_db(lambda lern_db, echt_db: lerntisch.schritt(
+            lern_db, laufendes_spiel(), lern["zufall"]))
+        return lern_antwort(ereignis=ereignis)
+
+    @app.post("/api/lerntisch/aktion")
+    def lerntisch_aktion(daten: dict = Body(...)):
+        betrag = cent(daten, "betrag")
+        tipp = mit_lern_db(lambda lern_db, echt_db: lerntisch.held_aktion(
+            lern_db, echt_db, laufendes_spiel(), daten.get("aktion"), betrag))
+        return lern_antwort(tipp=tipp)
+
+    @app.post("/api/lerntisch/ende")
+    def lerntisch_ende():
+        with sperre:
+            zusammenfassung = lerntisch.zusammenfassung(laufendes_spiel())
+            lern["spiel"] = None
+        return {"spiel": None, "zusammenfassung": zusammenfassung}
 
     # ---------------- Analyse ----------------
 
