@@ -34,6 +34,7 @@ from poker import clock as clockmodul
 from poker import kasse, turnier
 from poker import analyse as analysemodul
 from poker import berater
+from poker import handanalyse
 from poker import lerntisch
 from poker import tisch as tischmodul
 from poker import wartung
@@ -544,6 +545,40 @@ def erstelle_app(datenbank_pfad, uhr=time.time, entwicklung=False):
             zusammenfassung = lerntisch.zusammenfassung(laufendes_spiel())
             lern["spiel"] = None
         return {"spiel": None, "zusammenfassung": zusammenfassung}
+
+    # ---------------- Hand-Analyse und Odds-Rechner ----------------
+
+    def hand_datenbanken(quelle):
+        """(Datenbank der Hand, weitere Profil-Datenbanken) fuer "heimrunde"/"lerntisch"."""
+        if quelle == "heimrunde":
+            return datenbank(), []
+        if quelle == "lerntisch":
+            return oeffne_datenbank(lern_pfad), [datenbank()]
+        raise ValueError("Quelle muss heimrunde oder lerntisch sein")
+
+    @app.get("/api/haende/{quelle}")
+    def haende_liste(quelle: str, name: str = ""):
+        db, weitere = hand_datenbanken(quelle)
+        try:
+            return {"haende": handanalyse.hand_liste(db, name or None)}
+        finally:
+            for verbindung in [db] + weitere:
+                verbindung.close()
+
+    @app.get("/api/haende/{quelle}/{hand_id}")
+    def hand_analysieren(quelle: str, hand_id: int):
+        db, weitere = hand_datenbanken(quelle)
+        try:
+            return handanalyse.analysiere_hand(db, hand_id, weitere)
+        finally:
+            for verbindung in [db] + weitere:
+                verbindung.close()
+
+    @app.post("/api/odds")
+    def odds(daten: dict = Body(...)):
+        haende = [lies_karten(text) for text in daten.get("haende") or [] if text.strip()]
+        board = lies_karten(daten.get("board") or "")
+        return handanalyse.odds_rechner(haende, board, int(daten.get("gegner") or 1))
 
     # ---------------- Analyse ----------------
 

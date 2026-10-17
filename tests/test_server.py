@@ -388,3 +388,40 @@ def test_lerntisch_fehler(client):
     assert client.post("/api/lerntisch", json={"held": "Oliver", "gegner": []}).status_code == 400
     assert client.post("/api/lerntisch/schritt").status_code == 400
     assert client.post("/api/lerntisch/ende").status_code == 400
+
+
+# ---------- Hand-Analyse und Odds-Rechner ----------
+
+
+def test_hand_analyse_lerntisch(client):
+    client.post("/api/lerntisch", json={"held": "Oliver", "gegner": [{"typ": "station"}]})
+    spiel = client.get("/api/lerntisch").json()["spiel"]
+    for _ in range(200):
+        if spiel["phase"] == "ende":
+            break
+        if spiel["phase"] == "held":
+            aktion = "check" if "check" in spiel["hand"]["erlaubt"] else "call"
+            spiel = client.post("/api/lerntisch/aktion", json={"aktion": aktion}).json()["spiel"]
+        else:
+            spiel = client.post("/api/lerntisch/schritt").json()["spiel"]
+    liste = client.get("/api/haende/lerntisch", params={"name": "Oliver"}).json()["haende"]
+    assert len(liste) == 1
+    assert set(liste[0]["bekannt"]) == {"Oliver", "Calling Station-Bot 1"}
+    analyse = client.get(f"/api/haende/lerntisch/{liste[0]['hand_id']}").json()
+    preflop = analyse["strassen"][0]
+    assert preflop["equity"]["Oliver"]["wirklich"] is not None   # am Lerntisch alles bekannt
+
+
+def test_hand_analyse_fehler(client):
+    assert client.get("/api/haende/irgendwo").status_code == 400
+    assert client.get("/api/haende/heimrunde/5").status_code == 400
+    assert client.get("/api/haende/heimrunde").json() == {"haende": []}
+
+
+def test_odds_rechner_ueber_server(client):
+    r = client.post("/api/odds", json={"haende": ["As Ad", "Kh Kd"], "board": ""}).json()
+    assert r["art"] == "wirklich" and r["haende"][0]["equity"] > 0.75
+    r = client.post("/api/odds", json={"haende": ["Ah Kh", ""], "board": "2h 7h 9d",
+                                       "gegner": 2}).json()
+    assert r["art"] == "zufall" and r["haende"][0]["outs"]["anzahl"] == 15
+    assert client.post("/api/odds", json={"haende": ["As Ad", "As Kd"]}).status_code == 400
