@@ -88,6 +88,20 @@ def berechne_auszahlung(preisgeld_cent, prozente, rundung_cent=100):
 # ---------------- Abende allgemein ----------------
 
 
+def _gleicher_name(verbindung, name):
+    """Gibt es den Spieler schon mit anderer Gross-/Kleinschreibung oder Leerzeichen?
+
+    "ben " -> "Ben", damit ein Nachkauf nicht als neuer Spieler zaehlt.
+    """
+    name = " ".join((name or "").split())
+    if not name:
+        raise ValueError("Bitte einen Namen eingeben")
+    zeile = verbindung.execute(
+        "SELECT name FROM spieler WHERE lower(name) = lower(?) ORDER BY id LIMIT 1", (name,)
+    ).fetchone()
+    return zeile[0] if zeile else name
+
+
 def _lade_abend(verbindung, abend_id, art):
     zeile = verbindung.execute(
         "SELECT art, beendet, buyin_cent, rebuy_cent, addon_cent, auszahlung "
@@ -201,6 +215,7 @@ def turnier_buchen(verbindung, abend_id, name, art, zeitpunkt=None):
         raise ValueError(f"Unbekannte Buchungsart: {art}")
     abend = _lade_abend(verbindung, abend_id, "turnier")
     _pruefe_offen(abend)
+    name = _gleicher_name(verbindung, name)
     sid = spieler_id(verbindung, name)
     platz = _platz(verbindung, abend_id, sid)
 
@@ -403,10 +418,14 @@ def neues_cashgame(verbindung, name="", zeitpunkt=None):
 
 
 def cash_buyin(verbindung, abend_id, name, betrag_cent=CASH_BUYIN_CENT, zeitpunkt=None):
-    """Bucht ein Buy-in bzw. einen Nachkauf (beliebig oft, mit Uhrzeit)."""
+    """Bucht ein Buy-in bzw. einen Nachkauf/Rebuy (beliebig oft, mit Uhrzeit).
+
+    Der Name wird mit vorhandenen Spielern abgeglichen ("ben" -> "Ben").
+    """
     _pruefe_offen(_lade_abend(verbindung, abend_id, "cash"))
     if betrag_cent <= 0:
         raise ValueError("Der Betrag muss groesser als 0 sein")
+    name = _gleicher_name(verbindung, name)
     sid = spieler_id(verbindung, name)
     if _platz(verbindung, abend_id, sid) == "fehlt":
         verbindung.execute(
