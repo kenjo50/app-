@@ -239,6 +239,11 @@ def erstelle_app(datenbank_pfad, uhr=time.time, entwicklung=False):
     def abende():
         return {"abende": mit_db(kasse.abende_liste)}
 
+    @app.post("/api/ausgleich")
+    def ausgleich(daten: dict = Body(...)):
+        """Mehrere abgeschlossene Abende (Turnier + Cash) zusammen abrechnen."""
+        return mit_db(kasse.gemeinsamer_ausgleich, [int(i) for i in daten.get("abende") or []])
+
     @app.get("/api/bilanz")
     def bilanz(art: str = ""):
         return {"bilanz": mit_db(kasse.bilanz, art or None)}

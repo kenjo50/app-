@@ -15,6 +15,7 @@ from poker.kasse import (
     cash_uebersicht,
     chips_wert_cent,
     euro_zu_cent,
+    gemeinsamer_ausgleich,
     neues_cashgame,
     neues_turnier,
     turnier_abschliessen,
@@ -359,3 +360,39 @@ def test_turnier_rebuy_mit_anderer_schreibweise(db):
         turnier_buchen(db, t, "ANNA", "buyin")   # schon angemeldet
     u = turnier_uebersicht(db, t)
     assert u["rebuys"] == 1 and len(u["spieler"]) == 1
+
+
+def test_gemeinsamer_ausgleich_turnier_und_cash(db):
+    t = turnier_mit_vier(db)                  # 4 x 10 Euro, Auszahlung 70/30
+    for name in ["Dave", "Clara", "Ben"]:
+        ausscheiden(db, t, name)
+    turnier_abschliessen(db, t)               # Anna +18, Ben +2, Clara -10, Dave -10
+    c = neues_cashgame(db)
+    for name in ["Anna", "Ben", "Clara"]:
+        cash_buyin(db, c, name)
+    cash_out(db, c, "Anna", 0)                # Anna -10
+    cash_out(db, c, "Ben", 500)               # Ben -5
+    cash_out(db, c, "Clara", 2500)            # Clara +15
+    cash_abschliessen(db, c)
+
+    g = gemeinsamer_ausgleich(db, [t, c])
+    gesamt = {s["name"]: s["gesamt_cent"] for s in g["spieler"]}
+    assert gesamt == {"Anna": 800, "Ben": -300, "Clara": 500, "Dave": -1000}
+    ben = next(s for s in g["spieler"] if s["name"] == "Ben")
+    assert ben["pro_abend"] == {t: 200, c: -500}
+    assert g["ausgleich"]["rest_cent"] == 0
+    # Insgesamt fliesst nur so viel, wie die Verlierer zusammen verloren haben
+    assert sum(z["betrag_cent"] for z in g["ausgleich"]["zahlungen"]) == 1300
+    assert len(g["ausgleich"]["zahlungen"]) <= 3
+    assert [a["art"] for a in g["abende"]] == ["turnier", "cash"]
+
+
+def test_gemeinsamer_ausgleich_nur_abgeschlossene(db):
+    c = neues_cashgame(db)
+    cash_buyin(db, c, "Anna")
+    with pytest.raises(ValueError):
+        gemeinsamer_ausgleich(db, [c])
+    with pytest.raises(ValueError):
+        gemeinsamer_ausgleich(db, [])
+    with pytest.raises(ValueError):
+        gemeinsamer_ausgleich(db, [999])

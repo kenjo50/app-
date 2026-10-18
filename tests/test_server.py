@@ -425,3 +425,14 @@ def test_odds_rechner_ueber_server(client):
                                        "gegner": 2}).json()
     assert r["art"] == "zufall" and r["haende"][0]["outs"]["anzahl"] == 15
     assert client.post("/api/odds", json={"haende": ["As Ad", "As Kd"]}).status_code == 400
+
+
+def test_gemeinsam_abrechnen(client):
+    c = client.post("/api/cash", json={}).json()["id"]
+    for name, cashout in [("Anna", "15"), ("Ben", "5")]:
+        client.post(f"/api/cash/{c}/buyin", json={"name": name, "betrag": "10"})
+        client.post(f"/api/cash/{c}/cashout", json={"name": name, "betrag": cashout})
+    assert client.post("/api/ausgleich", json={"abende": [c]}).status_code == 400   # noch offen
+    client.post(f"/api/cash/{c}/abschliessen")
+    g = client.post("/api/ausgleich", json={"abende": [c]}).json()
+    assert g["ausgleich"]["zahlungen"] == [{"von": "Ben", "an": "Anna", "betrag_cent": 500}]
