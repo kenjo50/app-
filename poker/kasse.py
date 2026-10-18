@@ -207,7 +207,8 @@ def auszahlung_aendern(verbindung, abend_id, auszahlung):
 def turnier_buchen(verbindung, abend_id, name, art, zeitpunkt=None):
     """Bucht ein Buy-in, Rebuy oder Add-on. Der Betrag kommt aus dem Turnier.
 
-    - buyin: einmal pro Spieler, meldet ihn zum Turnier an
+    - buyin: einmal pro Spieler, meldet ihn zum Turnier an (auch spaet, solange
+      noch kein Sieger feststeht)
     - rebuy: nur wer schon angemeldet ist; wer ausgeschieden war, ist wieder dabei
     - addon: nur wer noch im Spiel ist
     """
@@ -222,6 +223,15 @@ def turnier_buchen(verbindung, abend_id, name, art, zeitpunkt=None):
     if art == "buyin":
         if platz != "fehlt":
             raise ValueError(f"{name} hat schon ein Buy-in, bitte Rebuy buchen")
+        if verbindung.execute("SELECT 1 FROM abend_spieler WHERE abend_id = ? AND platz = 1",
+                              (abend_id,)).fetchone():
+            raise ValueError("Das Turnier ist schon entschieden")
+        # Kommt jemand spaet dazu, landet er vor allen, die schon raus sind:
+        # deren Plaetze rutschen eins nach hinten (sonst gibt es Platz 5 doppelt)
+        verbindung.execute(
+            "UPDATE abend_spieler SET platz = platz + 1 WHERE abend_id = ? AND platz IS NOT NULL",
+            (abend_id,),
+        )
         verbindung.execute(
             "INSERT INTO abend_spieler (abend_id, spieler_id) VALUES (?, ?)", (abend_id, sid)
         )
@@ -384,6 +394,16 @@ def _turnier_ausgleich(spieler):
     return ausgleichszahlungen(ergebnisse)
 
 
+def pruefe_plaetze(spieler):
+    """Jeder Platz von 1 bis Anzahl Spieler muss genau einmal vergeben sein."""
+    plaetze = sorted(s["platz"] for s in spieler if s["platz"] is not None)
+    if plaetze != list(range(1, len(spieler) + 1)):
+        doppelt = sorted({p for p in plaetze if plaetze.count(p) > 1})
+        fehlend = [p for p in range(1, len(spieler) + 1) if p not in plaetze]
+        raise ValueError(f"Die Plaetze stimmen nicht (doppelt: {doppelt or '-'}, "
+                         f"fehlt: {fehlend or '-'}) - bitte mit 'Zurueck' korrigieren")
+
+
 def turnier_abschliessen(verbindung, abend_id, zeitpunkt=None):
     """Bucht die Auszahlungen nach Platzierung und schliesst das Turnier ab.
 
@@ -396,6 +416,7 @@ def turnier_abschliessen(verbindung, abend_id, zeitpunkt=None):
         raise ValueError("Es sind noch Spieler im Spiel, erst muss ein Sieger feststehen")
     if len(uebersicht["auszahlung"]) > uebersicht["spieler_gesamt"]:
         raise ValueError("Es werden mehr Plaetze bezahlt als Spieler mitgespielt haben")
+    pruefe_plaetze(uebersicht["spieler"])
     for platz in uebersicht["auszahlung"]:
         sid = spieler_id(verbindung, platz["name"])
         _buche(verbindung, abend_id, sid, "auszahlung", platz["betrag_cent"], zeitpunkt)

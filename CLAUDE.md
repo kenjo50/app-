@@ -54,6 +54,9 @@ und schlaegt sie einen Zufalls-Bot? Messung in bb/100 ueber viele Haende.
   Spieler die Ergebnisse mehrerer abgeschlossener Abende (Turnier + Cash) und rechnet daraus
   `ausgleichszahlungen`; Endpunkt `POST /api/ausgleich`. Vorschlag: alle Abende vom neuesten Datum.
   Turnier: Chips 25/100/500/1000, Startstack 3000 (Blinds durch 25 teilbar).
+- Turnier-Plaetze: Ausscheiden = Anzahl noch im Spiel; spaetes Buy-in schiebt alle schon
+  Ausgeschiedenen einen Platz nach hinten (nach dem Sieger kein Buy-in mehr);
+  `turnier_abschliessen` prueft mit `pruefe_plaetze`, dass 1..N je genau einmal vergeben sind.
 - Der Web-Server haelt Timer/Clock im Speicher und nummeriert Ansagen; die
   Web-App in `web/` fragt alle 250 ms ab. Nur das Geraet mit "Dieses Geraet steuert"
   zeigt Knoepfe und spricht (Web Speech API), Piepton per Web Audio API.
