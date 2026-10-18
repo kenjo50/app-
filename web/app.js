@@ -805,6 +805,7 @@ $("ca-wechseln").addEventListener("click", () => {
 // ---------------- Bilanz ----------------
 
 async function ladeBilanz() {
+  ladeGemeinsam();
   const daten = await api("/api/bilanz?art=" + $("b-art").value);
   $("b-tabelle").querySelector("tbody").innerHTML = daten.bilanz.map((e) =>
     `<tr><td>${esc(e.name)}</td><td class="zahl">${e.abende}</td>
@@ -813,6 +814,58 @@ async function ladeBilanz() {
     '<tr><td colspan="5" class="klein">Noch keine abgeschlossenen Abende.</td></tr>';
 }
 $("b-art").addEventListener("change", ladeBilanz);
+
+// ---------------- Gemeinsam abrechnen (Turnier + Cash) ----------------
+
+let gemeinsamGewaehlt = null;   // Set der angehakten Abend-IDs (null = noch nichts gewaehlt)
+
+function abendTitel(a) {
+  const art = a.art === "turnier" ? "Turnier" : "Cash";
+  const datum = a.zeitpunkt.slice(8, 10) + "." + a.zeitpunkt.slice(5, 7) + ".";
+  return `${art} ${datum}${a.name ? " " + a.name : ""}`;
+}
+
+async function ladeGemeinsam() {
+  const abende = (await api("/api/abende")).abende.filter((a) => a.beendet);
+  if (abende.length === 0) {
+    $("g-abende").innerHTML = '<p class="klein">Noch keine abgeschlossenen Abende.</p>';
+    $("g-ergebnis").innerHTML = "";
+    return;
+  }
+  if (gemeinsamGewaehlt === null) {
+    // Vorschlag: alle Abende vom Datum des neuesten abgeschlossenen Abends
+    const tag = abende[0].zeitpunkt.slice(0, 10);
+    gemeinsamGewaehlt = new Set(abende.filter((a) => a.zeitpunkt.startsWith(tag)).map((a) => a.id));
+  }
+  $("g-abende").innerHTML = abende.slice(0, 20).map((a) =>
+    `<label class="schalter"><input type="checkbox" data-gemeinsam="${a.id}"
+      ${gemeinsamGewaehlt.has(a.id) ? "checked" : ""}> ${esc(abendTitel(a))}</label>`).join("");
+  rechneGemeinsam();
+}
+
+async function rechneGemeinsam() {
+  if (gemeinsamGewaehlt.size === 0) {
+    $("g-ergebnis").innerHTML = '<p class="klein">Bitte mindestens einen Abend anhaken.</p>';
+    return;
+  }
+  const g = await api("/api/ausgleich", "POST", { abende: [...gemeinsamGewaehlt] });
+  const titel = Object.fromEntries(g.abende.map((a) => [a.id, abendTitel(a)]));
+  const zeilen = g.spieler.map((s) => {
+    const teile = Object.entries(s.pro_abend).map(([id, cent]) =>
+      `${esc(titel[id])} ${euroVorzeichen(cent)}`).join(" · ");
+    return `<tr><td>${esc(s.name)}<br><span class="klein">${teile}</span></td>
+      <td class="zahl ${s.gesamt_cent >= 0 ? "plus" : "minus"}">${euroVorzeichen(s.gesamt_cent)}</td></tr>`;
+  }).join("");
+  $("g-ergebnis").innerHTML = `<table><tbody>${zeilen}</tbody></table>` + ausgleichHtml(g.ausgleich);
+}
+
+$("g-abende").addEventListener("change", (e) => {
+  const id = Number(e.target.dataset.gemeinsam);
+  if (!id) return;
+  if (e.target.checked) gemeinsamGewaehlt.add(id);
+  else gemeinsamGewaehlt.delete(id);
+  rechneGemeinsam();
+});
 
 // ---------------- Daten: Sicherung und Aufraeumen ----------------
 

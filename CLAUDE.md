@@ -50,6 +50,9 @@ und schlaegt sie einen Zufalls-Bot? Messung in bb/100 ueber viele Haende.
 - Geld immer in Cent als ganze Zahl. Cash: Buy-in 10 Euro, Chips 10/25/50/100 ct.
 - Cash-Rebuy per Knopf beim Spieler (beliebig oft, Betrag aus dem Buy-in-Feld); Namen
   werden beim Buchen abgeglichen (`_gleicher_name`: "ben " -> "Ben"), auch im Turnier.
+- Gemeinsam abrechnen (Reiter "Bilanz"): `kasse.gemeinsamer_ausgleich(abend_ids)` addiert pro
+  Spieler die Ergebnisse mehrerer abgeschlossener Abende (Turnier + Cash) und rechnet daraus
+  `ausgleichszahlungen`; Endpunkt `POST /api/ausgleich`. Vorschlag: alle Abende vom neuesten Datum.
   Turnier: Chips 25/100/500/1000, Startstack 3000 (Blinds durch 25 teilbar).
 - Der Web-Server haelt Timer/Clock im Speicher und nummeriert Ansagen; die
   Web-App in `web/` fragt alle 250 ms ab. Nur das Geraet mit "Dieses Geraet steuert"

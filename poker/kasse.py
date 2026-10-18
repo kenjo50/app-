@@ -577,6 +577,49 @@ def _summen(verbindung, abend_id, sid):
     return eingezahlt, ausgezahlt
 
 
+def gemeinsamer_ausgleich(verbindung, abend_ids):
+    """Wer zahlt wem, wenn man mehrere Abende zusammen abrechnet?
+
+    Z. B. Turnier und Cash Game vom selben Abend: Pro Spieler werden die
+    Ergebnisse (ausgezahlt minus eingezahlt) aller gewaehlten Abende addiert,
+    daraus werden moeglichst wenige Zahlungen berechnet. Wer im Cash 5 Euro
+    verliert und im Turnier 20 Euro gewinnt, bekommt am Ende einfach 15 Euro.
+    Nur abgeschlossene Abende (dann stehen alle Auszahlungen fest).
+
+    Rueckgabe: {"abende": [{id, art, name, zeitpunkt}],
+                "spieler": [{name, pro_abend: {abend_id: cent}, gesamt_cent}],
+                "ausgleich": wie ausgleichszahlungen}
+    """
+    abend_ids = list(dict.fromkeys(abend_ids))   # doppelte weg, Reihenfolge bleibt
+    if not abend_ids:
+        raise ValueError("Bitte mindestens einen Abend auswaehlen")
+    abende = []
+    pro_spieler = {}
+    for abend_id in abend_ids:
+        zeile = verbindung.execute(
+            "SELECT art, name, zeitpunkt, beendet FROM abende WHERE id = ?", (abend_id,)
+        ).fetchone()
+        if zeile is None:
+            raise ValueError(f"Abend {abend_id} gibt es nicht")
+        art, name, zeitpunkt, beendet = zeile
+        if not beendet:
+            raise ValueError(f"{'Turnier' if art == 'turnier' else 'Cash Game'} "
+                             f"{name or zeitpunkt[:10]} ist noch nicht abgeschlossen")
+        abende.append({"id": abend_id, "art": art, "name": name, "zeitpunkt": zeitpunkt})
+        for sid, spieler_name in verbindung.execute(
+            "SELECT s.id, s.name FROM abend_spieler a JOIN spieler s ON a.spieler_id = s.id "
+            "WHERE a.abend_id = ?", (abend_id,)
+        ).fetchall():
+            eingezahlt, ausgezahlt = _summen(verbindung, abend_id, sid)
+            pro_spieler.setdefault(spieler_name, {})[abend_id] = ausgezahlt - eingezahlt
+
+    spieler = [{"name": name, "pro_abend": werte, "gesamt_cent": sum(werte.values())}
+               for name, werte in pro_spieler.items()]
+    spieler.sort(key=lambda s: (-s["gesamt_cent"], s["name"]))
+    ergebnisse = {s["name"]: s["gesamt_cent"] for s in spieler}
+    return {"abende": abende, "spieler": spieler, "ausgleich": ausgleichszahlungen(ergebnisse)}
+
+
 def bilanz(verbindung, art=None):
     """Bilanz pro Spieler ueber alle abgeschlossenen Abende.
 
