@@ -240,7 +240,7 @@
     <div class="umschalter">
       <button data-an-ansicht="spieler" class="aktiv">Spieler</button>
       <button data-an-ansicht="haende">Hände</button>
-      <button data-an-ansicht="rechner">Rechner</button>
+      <button data-an-ansicht="rechner">Tisch</button>
     </div>
     <div id="an-ansicht-spieler">
       <label>Spieler <select id="an-spieler"></select></label>
@@ -258,11 +258,12 @@
       <div id="ha-detail" hidden></div>
     </div>
     <div id="an-ansicht-rechner" hidden>
-      <p class="klein">Feld antippen (Hand oder Board), dann die Karten unten wählen.
-        Eine Hand allein wird gegen zufällige Gegner gerechnet.</p>
-      <div id="or-felder"></div>
-      <div id="or-raster"></div>
-      <div id="or-ergebnis"></div>
+      <p class="klein">Platz antippen = Spieler ist dabei, dann seine Karten wählen (ohne Karten
+        zählt er als unbekannte Hand). Board in der Mitte antippen für Flop, Turn, River.</p>
+      <div id="tr-tisch" class="tr-tisch"></div>
+      <div id="tr-hinweis" class="klein"></div>
+      <div id="tr-ergebnis"></div>
+      <div id="tr-leiste" class="tr-leiste" hidden></div>
     </div>
   </section>
 
@@ -336,5 +337,6 @@
 <script src="analyse.js"></script>
 <script src="lerntisch.js"></script>
 <script src="handanalyse.js"></script>
+<script src="tischrechner.js"></script>
 </body>
 </html>

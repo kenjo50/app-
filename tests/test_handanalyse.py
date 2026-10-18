@@ -192,3 +192,54 @@ def test_odds_rechner_gegen_zufall():
 def test_odds_rechner_fehler(haende, board):
     with pytest.raises(ValueError):
         handanalyse.odds_rechner(haende, board)
+
+
+# ---------- Tisch-Rechner (Strasse fuer Strasse) ----------
+
+
+def test_odds_verlauf_strasse_fuer_strasse():
+    r = handanalyse.odds_verlauf([lies_karten("As Ad"), lies_karten("Kh Kd")],
+                                 lies_karten("2c 7s Ks 9d 3h"))
+    assert [s["strasse"] for s in r["strassen"]] == ["preflop", "flop", "turn", "river"]
+    preflop, flop, turn, river = [[h["equity"] for h in s["haende"]] for s in r["strassen"]]
+    assert abs(preflop[0] - 0.82) < 0.03
+    assert flop[0] == pytest.approx(121 / 990)     # exakt, wie oben
+    assert river == [0.0, 1.0]
+    assert r["strassen"][1]["haende"][0]["outs"]["anzahl"] == 2
+    assert r["strassen"][3]["haende"][1]["handart"] == "Drilling"
+
+
+def test_odds_verlauf_nur_bis_zum_eingegebenen_board():
+    r = handanalyse.odds_verlauf([lies_karten("As Ad"), lies_karten("Kh Kd")], lies_karten("2c 7s Ks"))
+    assert [s["strasse"] for s in r["strassen"]] == ["preflop", "flop"]
+
+
+def test_odds_verlauf_mit_unbekannten_gegnern():
+    r = handanalyse.odds_verlauf([lies_karten("As Ad")], [], zufalls_gegner=3)
+    s = r["strassen"][0]
+    assert abs(s["haende"][0]["equity"] - 0.64) < 0.03      # AA gegen 3 Zufallshaende
+    assert abs(s["haende"][0]["equity"] + s["zufall_equity"] - 1) < 1e-9
+
+
+def test_odds_verlauf_bekannt_und_unbekannt_gemischt():
+    r = handanalyse.odds_verlauf([lies_karten("As Ad"), lies_karten("Kh Kd")], [], zufalls_gegner=1)
+    aa, kk = [h["equity"] for h in r["strassen"][0]["haende"]]
+    assert aa > kk > 0
+    assert abs(aa + kk + r["strassen"][0]["zufall_equity"] - 1) < 1e-9
+
+
+def test_odds_verlauf_ist_reproduzierbar():
+    argumente = ([lies_karten("As Kd")], lies_karten("2c 7s 9d"), 2)
+    assert handanalyse.odds_verlauf(*argumente) == handanalyse.odds_verlauf(*argumente)
+
+
+@pytest.mark.parametrize("haende, board, zufall", [
+    ([], [], 2),                                         # keine bekannte Hand
+    ([lies_karten("As Kd")], [], 0),                     # allein am Tisch
+    ([lies_karten("As Kd")] * 1, [], 9),                 # 10 Spieler
+    ([lies_karten("As Kd"), lies_karten("As Qd")], [], 0),
+    ([lies_karten("As Kd")], lies_karten("2c 3c"), 1),
+])
+def test_odds_verlauf_fehler(haende, board, zufall):
+    with pytest.raises(ValueError):
+        handanalyse.odds_verlauf(haende, board, zufall)

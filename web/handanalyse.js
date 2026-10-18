@@ -1,5 +1,6 @@
-// Reiter "Analyse", Ansichten "Hände" und "Rechner": gespeicherte Haende Strasse fuer
-// Strasse nachrechnen (Equity, Outs, Pot Odds) und ein freier Odds-Rechner.
+// Reiter "Analyse", Ansicht "Hände": gespeicherte Haende Strasse fuer Strasse
+// nachrechnen (Equity, Outs, Pot Odds). Der Umschalter Spieler | Hände | Tisch steht
+// auch hier; die Ansicht "Tisch" ist in tischrechner.js.
 // Gerechnet wird im Kern (poker/handanalyse.py). Benutzt Hilfsfunktionen aus app.js,
 // live.js (karteHtml, kartenraster, kartenSchluessel, kartenCode, karteAusKnopf, prozent)
 // und analyse.js (ladeAnalyse, STRASSE_NAME, AKTION_NAME, bb, plusMinus, karten).
@@ -7,8 +8,6 @@
 "use strict";
 
 const ladeSpielerAnalyse = ladeAnalyse;   // die Ansicht "Spieler" aus analyse.js
-let rechner = { haende: [[], []], board: [], ziel: 0, gegner: 1 };
-let rechnerZaehler = 0;   // nur die Antwort der neuesten Anfrage anzeigen
 
 // ---------------- Umschalter ----------------
 
@@ -21,7 +20,8 @@ function zeigeAnsicht(ansicht) {
     b.classList.toggle("aktiv", b.dataset.anAnsicht === ansicht));
   if (ansicht === "spieler") ladeSpielerAnalyse();
   if (ansicht === "haende") ladeHandListe();
-  if (ansicht === "rechner") zeichneRechner();
+  // zeichneTischrechner kommt aus tischrechner.js (wird danach geladen)
+  if (ansicht === "rechner" && typeof zeichneTischrechner === "function") zeichneTischrechner();
 }
 
 // app.js ruft beim Oeffnen des Reiters ladeAnalyse auf - jetzt mit der gemerkten Ansicht
@@ -146,114 +146,6 @@ $("an-ansicht-haende").addEventListener("click", (e) => {
     $("ha-detail").hidden = true;
     $("ha-liste").hidden = false;
   }
-});
-
-// ---------------- Rechner ----------------
-
-function rechnerFeldKarten(ziel) {
-  return ziel === "board" ? rechner.board : rechner.haende[ziel];
-}
-
-function zeichneRechner(ergebnis = null) {
-  const felder = rechner.haende.map((hand, i) => {
-    const r = ergebnis && ergebnis.haende[ergebnisIndex(i)];
-    return `<button class="or-feld ${rechner.ziel === i ? "ziel" : ""}" data-or-ziel="${i}">
-      <span class="name">Hand ${i + 1}</span>${karten(hand)}
-      ${r && hand.length === 2 ? `<span class="equity">${prozent(r.equity)}</span>` : ""}</button>`;
-  }).join("");
-  const nurEine = rechner.haende.filter((h) => h.length === 2).length === 1;
-  $("or-felder").innerHTML = `${felder}
-    <div class="zeile">
-      ${rechner.haende.length < 9 ? '<button class="klein-knopf" data-or-befehl="hand">+ Hand</button>' : ""}
-      ${rechner.haende.length > 1 ? '<button class="klein-knopf" data-or-befehl="weg">− Hand</button>' : ""}
-      <button class="klein-knopf" data-or-befehl="leeren">Alles leeren</button>
-    </div>
-    <button class="or-feld ${rechner.ziel === "board" ? "ziel" : ""}" data-or-ziel="board">
-      <span class="name">Board</span>${karten(rechner.board)}</button>
-    ${nurEine ? `<div class="zeile">Gegner (zufällig):
-      <button class="klein-knopf" data-or-befehl="weniger">−</button> <strong>${rechner.gegner}</strong>
-      <button class="klein-knopf" data-or-befehl="mehr">+</button></div>` : ""}`;
-
-  const benutzt = new Set();
-  for (const k of rechner.haende.flat().concat(rechner.board)) benutzt.add(kartenSchluessel(k));
-  const eigene = new Set(rechnerFeldKarten(rechner.ziel).map(kartenSchluessel));
-  const fremd = new Set([...benutzt].filter((s) => !eigene.has(s)));
-  $("or-raster").innerHTML = kartenraster(fremd, eigene);
-
-  if (ergebnis) {
-    $("or-ergebnis").innerHTML = ergebnis.haende.map((r, i) => `<div class="analyse-kasten">
-        <div class="kopf"><span>${karten(r.karten)} ${r.handart ? esc(r.handart) : ""}</span>
-          <strong>${prozent(r.equity)}</strong></div>
-        ${outsHtml("Hand " + (vollstaendigeIndizes()[i] + 1), r.outs)}</div>`).join("") +
-      `<p class="klein">${ergebnis.art === "zufall"
-        ? `Gegen ${rechner.gegner} zufällige Hand/Hände (Monte-Carlo).`
-        : "Die Hände gegeneinander (ab dem Flop exakt ausgezählt)."}</p>`;
-  } else {
-    $("or-ergebnis").innerHTML = "";
-  }
-}
-
-function vollstaendigeIndizes() {
-  return rechner.haende.map((h, i) => (h.length === 2 ? i : -1)).filter((i) => i >= 0);
-}
-
-function ergebnisIndex(feld) {
-  return vollstaendigeIndizes().indexOf(feld);
-}
-
-async function rechne() {
-  const fertig = rechner.haende.filter((h) => h.length === 2);
-  const halbe = rechner.haende.some((h) => h.length === 1);
-  if (fertig.length === 0 || halbe || ![0, 3, 4, 5].includes(rechner.board.length)) {
-    return zeichneRechner();
-  }
-  const nummer = ++rechnerZaehler;
-  const ergebnis = await api("/api/odds", "POST", {
-    haende: fertig.map((h) => h.map(kartenCode).join(" ")),
-    board: rechner.board.map(kartenCode).join(" "),
-    gegner: rechner.gegner,
-  });
-  if (nummer === rechnerZaehler) zeichneRechner(ergebnis);
-}
-
-function naechstesZiel() {
-  // Nach einer vollen Hand zum naechsten leeren Feld springen
-  const leer = rechner.haende.findIndex((h) => h.length < 2);
-  return leer >= 0 ? leer : "board";
-}
-
-$("an-ansicht-rechner").addEventListener("click", (e) => {
-  const b = e.target.closest("button");
-  if (!b || b.disabled) return;
-  const d = b.dataset;
-  if (d.orZiel !== undefined) {
-    rechner.ziel = d.orZiel === "board" ? "board" : Number(d.orZiel);
-    return zeichneRechner();
-  }
-  if (d.karte) {
-    const karte = karteAusKnopf(b);
-    const feld = rechnerFeldKarten(rechner.ziel);
-    const stelle = feld.findIndex((k) => kartenSchluessel(k) === kartenSchluessel(karte));
-    if (stelle >= 0) {
-      feld.splice(stelle, 1);
-    } else if (feld.length < (rechner.ziel === "board" ? 5 : 2)) {
-      feld.push(karte);
-      if (rechner.ziel !== "board" && feld.length === 2) rechner.ziel = naechstesZiel();
-    }
-    return rechne();
-  }
-  if (d.orBefehl === "hand") {
-    rechner.haende.push([]);
-    rechner.ziel = rechner.haende.length - 1;
-  }
-  if (d.orBefehl === "weg") {
-    rechner.haende.pop();
-    if (rechner.ziel !== "board" && rechner.ziel >= rechner.haende.length) rechner.ziel = 0;
-  }
-  if (d.orBefehl === "leeren") rechner = { haende: [[], []], board: [], ziel: 0, gegner: rechner.gegner };
-  if (d.orBefehl === "weniger") rechner.gegner = Math.max(1, rechner.gegner - 1);
-  if (d.orBefehl === "mehr") rechner.gegner = Math.min(8, rechner.gegner + 1);
-  rechne();
 });
 
 // Gemerkte Ansicht wiederherstellen, falls der Reiter "Analyse" schon offen ist

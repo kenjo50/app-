@@ -364,3 +364,77 @@ def odds_rechner(haende, board, zufalls_gegner=1, seed=0):
             "outs": outs(hand, board, andere or None),
         })
     return {"art": art, "haende": ergebnis}
+
+
+# ---------------- Tisch-Rechner: Equity Strasse fuer Strasse ----------------
+
+
+def equity_gemischt(haende, board, zufalls_gegner=0, zufall=random, durchlaeufe=5000):
+    """Equity bekannter Haende, wenn zusaetzlich `zufalls_gegner` Spieler mit
+    unbekannten Karten dabei sind (deren Karten werden in jedem Durchlauf zufaellig
+    ausgeteilt). Ohne unbekannte Gegner wie equity_bekannt (ab dem Flop exakt).
+
+    Rueckgabe: (equity pro bekannter Hand, equity aller Unbekannten zusammen).
+    """
+    if zufalls_gegner == 0:
+        return equity_bekannt(haende, board, zufall, durchlaeufe), 0.0
+    bekannte = list(board) + [k for hand in haende for k in hand]
+    if len(set(bekannte)) != len(bekannte):
+        raise ValueError("Eine Karte ist doppelt vergeben")
+    rest = _restdeck(bekannte)
+    fehlende = 5 - len(board)
+    punkte = [0.0] * (len(haende) + 1)   # letzter Eintrag: alle Unbekannten
+    for _ in range(durchlaeufe):
+        gezogen = zufall.sample(rest, 2 * zufalls_gegner + fehlende)
+        komplett = list(board) + gezogen[2 * zufalls_gegner:]
+        werte = [bewerte_hand(hand + komplett) for hand in haende]
+        werte += [bewerte_hand(gezogen[2 * i:2 * i + 2] + komplett) for i in range(zufalls_gegner)]
+        gewinner = finde_gewinner(werte)
+        for position in gewinner:
+            punkte[min(position, len(haende))] += 1 / len(gewinner)
+    return [p / durchlaeufe for p in punkte[:-1]], punkte[-1] / durchlaeufe
+
+
+def odds_verlauf(haende, board, zufalls_gegner=0, seed=0):
+    """Equity aller Haende Strasse fuer Strasse: Preflop, dann mit Flop, Turn, River
+    (so weit das Board eingegeben ist).
+
+    haende: bekannte Haende (je 2 Karten), zufalls_gegner: Spieler ohne bekannte Karten.
+    Rueckgabe: {"strassen": [{"strasse", "board", "zufall_equity",
+                "haende": [{"equity", "handart", "outs"}]}]}
+    """
+    if not haende:
+        raise ValueError("Bitte mindestens einer Hand Karten geben")
+    if len(haende) + zufalls_gegner < 2:
+        raise ValueError("Es braucht mindestens zwei Spieler")
+    if len(haende) + zufalls_gegner > 9:
+        raise ValueError("Hoechstens 9 Spieler")
+    if len(board) not in (0, 3, 4, 5):
+        raise ValueError("Das Board hat 0, 3, 4 oder 5 Karten")
+    for hand in haende:
+        if len(hand) != 2:
+            raise ValueError("Jede Hand braucht genau 2 Karten")
+    alle = list(board) + [k for hand in haende for k in hand]
+    if len(set(alle)) != len(alle):
+        raise ValueError("Eine Karte ist doppelt vergeben")
+
+    zufall = random.Random(seed)
+    strassen = []
+    for strasse in STRASSEN:
+        anzahl = BOARD_AUF_STRASSE[strasse]
+        if anzahl > len(board):
+            break
+        teil = list(board[:anzahl])
+        equity, zufall_equity = equity_gemischt(haende, teil, zufalls_gegner, zufall)
+        eintraege = []
+        for i, hand in enumerate(haende):
+            andere = [h for j, h in enumerate(haende) if j != i]
+            eintraege.append({
+                "equity": equity[i],
+                "handart": HANDART_NAMEN[bewerte_hand(hand + teil)[0]] if teil else None,
+                # Gegen bekannte Gegner nur, wenn keiner unbekannt ist
+                "outs": outs(hand, teil, andere if andere and not zufalls_gegner else None),
+            })
+        strassen.append({"strasse": strasse, "board": teil, "zufall_equity": zufall_equity,
+                         "haende": eintraege})
+    return {"strassen": strassen}

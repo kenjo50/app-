@@ -396,3 +396,38 @@ def test_gemeinsamer_ausgleich_nur_abgeschlossene(db):
         gemeinsamer_ausgleich(db, [])
     with pytest.raises(ValueError):
         gemeinsamer_ausgleich(db, [999])
+
+
+def test_spaeter_buyin_verschiebt_plaetze(db):
+    t = neues_turnier(db, 1000, [50, 30, 20])
+    for name in ["A", "B", "C", "D", "E"]:
+        turnier_buchen(db, t, name, "buyin")
+    ausscheiden(db, t, "E")                   # E wird 5.
+    turnier_buchen(db, t, "F", "buyin")       # F kommt spaet -> E rutscht auf 6
+    turnier_buchen(db, t, "G", "buyin")       # G auch -> E 7
+    for name in ["D", "C", "G", "B", "F"]:
+        ausscheiden(db, t, name)
+    u = turnier_uebersicht(db, t)
+    plaetze = {s["name"]: s["platz"] for s in u["spieler"]}
+    assert plaetze == {"A": 1, "F": 2, "B": 3, "G": 4, "C": 5, "D": 6, "E": 7}
+    assert [p["name"] for p in u["auszahlung"]] == ["A", "F", "B"]
+    turnier_abschliessen(db, t)
+
+
+def test_kein_buyin_nach_turnierende(db):
+    t = neues_turnier(db, 1000, [100])
+    for name in ["A", "B"]:
+        turnier_buchen(db, t, name, "buyin")
+    ausscheiden(db, t, "B")
+    with pytest.raises(ValueError):
+        turnier_buchen(db, t, "C", "buyin")
+
+
+def test_abschliessen_prueft_plaetze(db):
+    t = turnier_mit_vier(db)
+    for name in ["Dave", "Clara", "Ben"]:
+        ausscheiden(db, t, name)
+    # Kaputte Daten wie aus einer alten Version: Platz 4 doppelt, 3 fehlt
+    db.execute("UPDATE abend_spieler SET platz = 4 WHERE platz = 3 AND abend_id = ?", (t,))
+    with pytest.raises(ValueError, match="doppelt"):
+        turnier_abschliessen(db, t)

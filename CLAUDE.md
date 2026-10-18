@@ -54,6 +54,9 @@ und schlaegt sie einen Zufalls-Bot? Messung in bb/100 ueber viele Haende.
   Spieler die Ergebnisse mehrerer abgeschlossener Abende (Turnier + Cash) und rechnet daraus
   `ausgleichszahlungen`; Endpunkt `POST /api/ausgleich`. Vorschlag: alle Abende vom neuesten Datum.
   Turnier: Chips 25/100/500/1000, Startstack 3000 (Blinds durch 25 teilbar).
+- Turnier-Plaetze: Ausscheiden = Anzahl noch im Spiel; spaetes Buy-in schiebt alle schon
+  Ausgeschiedenen einen Platz nach hinten (nach dem Sieger kein Buy-in mehr);
+  `turnier_abschliessen` prueft mit `pruefe_plaetze`, dass 1..N je genau einmal vergeben sind.
 - Der Web-Server haelt Timer/Clock im Speicher und nummeriert Ansagen; die
   Web-App in `web/` fragt alle 250 ms ab. Nur das Geraet mit "Dieses Geraet steuert"
   zeigt Knoepfe und spricht (Web Speech API), Piepton per Web Audio API.
@@ -99,7 +102,7 @@ und schlaegt sie einen Zufalls-Bot? Messung in bb/100 ueber viele Haende.
 - Nur abgeschlossene Haende mit Ergebnis, alles in Big Blinds. Endpunkt `/api/analyse/{name}`,
   Web: `web/analyse.js` (nach `live.js` geladen), Gewinnkurve als SVG mit Antipp-Anzeige.
 
-## Hand-Analyse und Odds-Rechner (Reiter "Analyse": Spieler | Haende | Rechner)
+## Hand-Analyse und Odds-Tisch (Reiter "Analyse": Spieler | Haende | Tisch)
 - `poker/handanalyse.py`: `analysiere_hand` rechnet eine gespeicherte Hand Strasse fuer
   Strasse nach (Pot/zu callen aus den Aktionen, Blinds Platz 0/1): Equity "wirklich"
   (gegen echte Karten, nur wenn alle aktiven Gegner bekannt; ab Flop exakt ausgezaehlt),
@@ -108,6 +111,11 @@ und schlaegt sie einen Zufalls-Bot? Messung in bb/100 ueber viele Haende.
   bekannten Karten; `odds_rechner` fuer freie Eingabe (1 Hand -> gegen Zufall).
 - Endpunkte `/api/haende/{heimrunde|lerntisch}[/{hand_id}]`, `/api/odds`;
   Web: `web/handanalyse.js` (nach `lerntisch.js`, ersetzt `ladeAnalyse` durch den Umschalter).
+- Ansicht "Tisch" (`web/tischrechner.js`): 9 Plaetze um einen Tisch, antippen = dabei, Leiste mit
+  Kartenraster; Plaetze ohne Karten = unbekannte Hand. `odds_verlauf(haende, board, zufalls_gegner)`
+  liefert Equity Preflop/Flop/Turn/River (`equity_gemischt`: bekannte + zufaellige Haende),
+  Endpunkt `POST /api/odds/verlauf`. Knoepfe am Tisch mit CSS `translate` positionieren
+  (nicht `transform`, das ueberschreibt `button:active { transform: scale() }`).
 
 ## Lerntisch (Reiter "Lernen")
 - `poker/lerntisch.py`: ueben mit Spielgeld gegen Bots (Blinds 10/10 ct, 10 Euro, pleite ->

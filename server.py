@@ -585,6 +585,13 @@ def erstelle_app(datenbank_pfad, uhr=time.time, entwicklung=False):
         board = lies_karten(daten.get("board") or "")
         return handanalyse.odds_rechner(haende, board, int(daten.get("gegner") or 1))
 
+    @app.post("/api/odds/verlauf")
+    def odds_verlauf(daten: dict = Body(...)):
+        """Tisch-Rechner: bekannte Haende + Anzahl Spieler ohne Karten, Board."""
+        haende = [lies_karten(text) for text in daten.get("haende") or []]
+        return handanalyse.odds_verlauf(haende, lies_karten(daten.get("board") or ""),
+                                        int(daten.get("zufall") or 0))
+
     # ---------------- Analyse ----------------
 
     @app.get("/api/analyse/{name}")
